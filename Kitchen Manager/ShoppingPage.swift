@@ -1,0 +1,654 @@
+import SwiftUI
+
+struct ShoppingPage: View {
+    @Environment(KitchenStore.self) private var store
+
+    @State private var form = ShoppingItemForm()
+    @State private var selectedCategory = "全部"
+    @State private var showingAddForm = false
+    @State private var showingFixedDays = false
+    @State private var showInlineAdd = false
+    @State private var showingCheckout = false
+
+    private var currentWeekDates: [Date] {
+        DateHelper.weekDates(from: DateHelper.weekStart(for: Date()))
+    }
+
+    private var resolvedDays: [String] {
+        store.shoppingState.resolvedShopDays(for: currentWeekDates)
+    }
+
+    private var filteredItems: [ShoppingItem] {
+        selectedCategory == "全部" ? store.shoppingState.items : store.shoppingState.items.filter { $0.category == selectedCategory }
+    }
+
+    private var completedCount: Int {
+        store.shoppingState.items.filter { $0.isChecked }.count
+    }
+
+    private var checkedItems: [ShoppingItem] {
+        store.shoppingState.items.filter { $0.isChecked }
+    }
+
+    private var pendingItems: [ShoppingItem] {
+        store.shoppingState.items.filter { !$0.isChecked }
+    }
+
+    private var pendingEstimatedTotal: Double {
+        pendingItems.reduce(0) { $0 + $1.estimatedTotalCost }
+    }
+
+    private var currentMonthSpent: Double {
+        let monthKey = DateHelper.monthKey(for: Date())
+        return store.budgetState.transactions.reduce(0) { partial, tx in
+            guard let date = DateHelper.date(from: tx.date), DateHelper.monthKey(for: date) == monthKey else {
+                return partial
+            }
+            return partial + tx.amount
+        }
+    }
+
+    private var projectedBudgetRemaining: Double {
+        store.budgetState.monthlyBudget - currentMonthSpent - pendingEstimatedTotal
+    }
+
+    private var nearestShopDay: String {
+        let today = DateHelper.todayKey
+        return resolvedDays.first(where: { $0 >= today }) ?? resolvedDays.first ?? ""
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 14) {
+                    // Summary
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("待采购预估")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+                            Text(pendingEstimatedTotal.currencyText)
+                                .font(.title.weight(.bold).monospacedDigit())
+                            Text("\(pendingItems.count) 项")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text("预算余量")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+                            Text(projectedBudgetRemaining.currencyText)
+                                .font(.title3.weight(.bold).monospacedDigit())
+                                .foregroundStyle(projectedBudgetRemaining >= 0 ? .green : .red)
+                            Text(projectedBudgetRemaining >= 0 ? "预算内" : "将超预算")
+                                .font(.caption)
+                                .foregroundStyle(projectedBudgetRemaining >= 0 ? .green : .red)
+                        }
+                    }
+                    .cardStyle()
+                    .padding(.horizontal)
+
+                    // Shopping days
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("购物日")
+                                .font(.headline)
+                            Spacer()
+                            Button { showingFixedDays = true } label: {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "repeat")
+                                    Text("固定")
+                                }
+                                .font(.caption.weight(.medium))
+                            }
+                        }
+
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 8)], spacing: 8) {
+                            ForEach(currentWeekDates, id: \.self) { date in
+                                let dateKey = DateHelper.key(for: date)
+                                let isSelected = resolvedDays.contains(dateKey)
+                                ShoppingDayChip(
+                                    weekday: DateHelper.weekdayName(for: date),
+                                    dayText: DateHelper.monthDayString(date),
+                                    itemCount: pendingCount(for: dateKey),
+                                    isSelected: isSelected,
+                                    isToday: dateKey == DateHelper.todayKey
+                                ) {
+                                    toggleShoppingDay(dateKey)
+                                }
+                            }
+                        }
+                    }
+                    .cardStyle()
+                    .padding(.horizontal)
+
+                    // Category filter
+                    HStack(alignment: .center, spacing: 8) {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(["全部"] + KitchenData.categories, id: \.self) { category in
+                                    Button {
+                                        selectedCategory = category
+                                    } label: {
+                                        Text(category)
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(selectedCategory == category ? .white : .primary)
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 6)
+                                            .background(selectedCategory == category ? Color.accentColor : Color(.tertiarySystemFill), in: Capsule())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                        .frame(minHeight: 0)
+                    }
+                    .padding(.horizontal)
+
+                    // Item list
+                    if store.shoppingState.items.isEmpty {
+                        EmptyStateCard(symbol: "cart.fill", title: "清单是空的", subtitle: "先去灶王爷里点菜或看推荐。")
+                            .padding(.horizontal)
+                    } else if resolvedDays.isEmpty {
+                        VStack(spacing: 0) {
+                            ForEach(filteredItems) { item in
+                                ShoppingItemRow(
+                                    item: item,
+                                    onToggle: { toggleItem(item) },
+                                    onDelete: { deleteItem(item) }
+                                )
+                            }
+                        }
+                        .cardStyle()
+                        .padding(.horizontal)
+                    } else {
+                        ForEach(resolvedDays, id: \.self) { day in
+                            let items = filteredItems.filter { $0.day == day }
+                            if !items.isEmpty {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    HStack {
+                                        Text(day == DateHelper.todayKey ? "今天购物" : day)
+                                            .font(.subheadline.weight(.semibold))
+                                        Spacer()
+                                        Text("\(items.count) 项")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .padding(.bottom, 4)
+
+                                    ForEach(items) { item in
+                                        ShoppingItemRow(
+                                            item: item,
+                                            onToggle: { toggleItem(item) },
+                                            onDelete: { deleteItem(item) }
+                                        )
+                                    }
+                                }
+                                .cardStyle()
+                                .padding(.horizontal)
+                            }
+                        }
+
+                        let unassignedItems = filteredItems.filter { $0.day.isEmpty }
+                        if !unassignedItems.isEmpty {
+                            VStack(alignment: .leading, spacing: 0) {
+                                HStack {
+                                    Text("未分配")
+                                        .font(.subheadline.weight(.semibold))
+                                    Spacer()
+                                    if !resolvedDays.isEmpty {
+                                        Button("全部分配") { assignAllUnassigned() }
+                                            .font(.caption.weight(.medium))
+                                    }
+                                }
+                                .padding(.bottom, 4)
+
+                                ForEach(unassignedItems) { item in
+                                    ShoppingItemRow(
+                                        item: item,
+                                        onToggle: { toggleItem(item) },
+                                        onDelete: { deleteItem(item) }
+                                    )
+                                    .contextMenu {
+                                        ForEach(resolvedDays, id: \.self) { day in
+                                            Button("分配到 \(day == DateHelper.todayKey ? "今天" : day)") {
+                                                assignItemToDay(item, day: day)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            .cardStyle()
+                            .padding(.horizontal)
+                        }
+                    }
+
+                    // Checkout bar (when items are checked)
+                    if completedCount > 0 {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("已勾选 \(completedCount) 项")
+                                    .font(.subheadline.weight(.semibold))
+                                Text("预估 \(checkedItems.reduce(0) { $0 + $1.estimatedTotalCost }.currencyText)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button("结算入库") { showingCheckout = true }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+
+                            Button("取消勾选") {
+                                for i in store.shoppingState.items.indices {
+                                    store.shoppingState.items[i].isChecked = false
+                                }
+                            }
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        }
+                        .cardStyle()
+                        .padding(.horizontal)
+                    }
+
+                    // Inline quick add — below the list
+                    VStack(alignment: .leading, spacing: 0) {
+                        Button {
+                            withAnimation(.snappy(duration: 0.25)) {
+                                showInlineAdd.toggle()
+                                if showInlineAdd { form.day = nearestShopDay }
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "plus.circle.fill")
+                                    .foregroundStyle(Color.accentColor)
+                                Text("手动添加")
+                                    .font(.subheadline.weight(.medium))
+                                Spacer()
+                                Image(systemName: showInlineAdd ? "chevron.up" : "chevron.down")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+
+                        if showInlineAdd {
+                            VStack(spacing: 10) {
+                                Divider().padding(.vertical, 8)
+
+                                TextField("名称", text: $form.name)
+                                    .textFieldStyle(.roundedBorder)
+                                    .onChange(of: form.name) { _, newValue in
+                                        let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                                        guard trimmed.count >= 2 else { return }
+                                        form.category = KitchenData.categoryGuess(for: trimmed)
+                                        form.unit = KitchenData.unitGuess(for: trimmed, category: form.category)
+                                    }
+
+                                HStack(spacing: 8) {
+                                    TextField("数量", text: $form.quantity)
+                                        .textFieldStyle(.roundedBorder)
+                                        .keyboardType(.decimalPad)
+                                        .frame(maxWidth: 80)
+
+                                    Picker("", selection: $form.unit) {
+                                        ForEach(KitchenData.units, id: \.self) { Text($0).tag($0) }
+                                    }
+                                    .pickerStyle(.menu)
+                                    .labelsHidden()
+
+                                    Picker("", selection: $form.category) {
+                                        ForEach(KitchenData.categories, id: \.self) { Text($0).tag($0) }
+                                    }
+                                    .pickerStyle(.menu)
+                                    .labelsHidden()
+
+                                    Spacer()
+                                }
+
+                                FilledButton(title: "添加") { addManualShoppingItem() }
+                                    .disabled(form.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            }
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
+                    .cardStyle()
+                    .padding(.horizontal)
+                }
+                .padding(.vertical, 8)
+            }
+            .background(KitchenTheme.background)
+            .navigationTitle("购物清单")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showingAddForm = true } label: {
+                        Image(systemName: "plus")
+                    }
+                }
+            }
+            .sheet(isPresented: $showingAddForm) {
+                AddShoppingItemSheet(form: $form, shopDays: resolvedDays) {
+                    addManualShoppingItem()
+                }
+            }
+            .sheet(isPresented: $showingFixedDays) {
+                FixedShopDaysSheet()
+            }
+            .sheet(isPresented: $showingCheckout) {
+                CheckoutSheet(checkedItems: checkedItems)
+            }
+        }
+    }
+
+    // MARK: - Actions
+
+    private func toggleShoppingDay(_ day: String) {
+        if let index = store.shoppingState.shopDays.firstIndex(of: day) {
+            store.shoppingState.shopDays.remove(at: index)
+        } else {
+            store.shoppingState.shopDays.append(day)
+            store.shoppingState.shopDays.sort()
+        }
+    }
+
+    private func pendingCount(for day: String) -> Int {
+        store.shoppingState.items.filter { !$0.isChecked && $0.day == day }.count
+    }
+
+    private func addManualShoppingItem() {
+        let trimmed = form.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        store.shoppingState.items.append(
+            ShoppingItem(
+                name: trimmed,
+                quantity: form.quantity.isEmpty ? "1" : form.quantity,
+                unit: form.unit,
+                category: form.category,
+                day: form.day,
+                isChecked: false,
+                estimatedUnitPrice: Double(form.estimatedUnitPrice)
+            )
+        )
+
+        form.name = ""
+        form.quantity = ""
+        form.estimatedUnitPrice = ""
+        store.showToast("已添加 \(trimmed)")
+        showingAddForm = false
+        withAnimation { showInlineAdd = false }
+    }
+
+    private func toggleItem(_ item: ShoppingItem) {
+        guard let index = store.shoppingState.items.firstIndex(where: { $0.id == item.id }) else { return }
+        store.shoppingState.items[index].isChecked.toggle()
+    }
+
+    private func deleteItem(_ item: ShoppingItem) {
+        store.shoppingState.items.removeAll { $0.id == item.id }
+        store.showToast("已移除 \(item.name)")
+    }
+
+    private func assignItemToDay(_ item: ShoppingItem, day: String) {
+        guard let index = store.shoppingState.items.firstIndex(where: { $0.id == item.id }) else { return }
+        store.shoppingState.items[index].day = day
+        store.showToast("\(item.name) → \(day == DateHelper.todayKey ? "今天" : day)")
+    }
+
+    private func assignAllUnassigned() {
+        let day = nearestShopDay
+        guard !day.isEmpty else { return }
+        for i in store.shoppingState.items.indices where store.shoppingState.items[i].day.isEmpty {
+            store.shoppingState.items[i].day = day
+        }
+        store.showToast("已全部分配到 \(day == DateHelper.todayKey ? "今天" : day)")
+    }
+}
+
+// MARK: - Checkout Sheet
+
+struct CheckoutSheet: View {
+    @Environment(KitchenStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+
+    let checkedItems: [ShoppingItem]
+    @State private var lineItems: [PurchaseLineItem] = []
+
+    private var total: Double {
+        lineItems.reduce(0) { $0 + $1.totalCost }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(header: Text("确认采购明细"), footer: Text("可修改实际购买数量和单价。确认后将自动入库并记录支出。")) {
+                    ForEach($lineItems) { $item in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(item.name)
+                                .font(.subheadline.weight(.semibold))
+
+                            HStack(spacing: 8) {
+                                HStack(spacing: 4) {
+                                    Text("数量")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    TextField("", text: $item.quantity)
+                                        .textFieldStyle(.roundedBorder)
+                                        .keyboardType(.decimalPad)
+                                        .frame(width: 60)
+                                }
+
+                                Text(item.unit)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+
+                                Spacer()
+
+                                HStack(spacing: 4) {
+                                    Text("单价 €")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    TextField("", value: $item.unitPrice, format: .number)
+                                        .textFieldStyle(.roundedBorder)
+                                        .keyboardType(.decimalPad)
+                                        .frame(width: 70)
+                                }
+                            }
+
+                            HStack {
+                                Spacer()
+                                Text("小计 \(item.totalCost.currencyText)")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .onDelete { indexSet in
+                        lineItems.remove(atOffsets: indexSet)
+                    }
+                }
+
+                Section {
+                    HStack {
+                        Text("合计")
+                            .font(.headline)
+                        Spacer()
+                        Text(total.currencyText)
+                            .font(.headline.monospacedDigit())
+                    }
+
+                    Button("确认结算") {
+                        store.checkoutShoppingTrip(lineItems: lineItems)
+                        store.showToast("已入库 \(lineItems.count) 项，支出 \(total.currencyText)")
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                    .disabled(lineItems.isEmpty)
+                }
+            }
+            .navigationTitle("采购结算")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.large])
+        .onAppear {
+            lineItems = checkedItems.map { item in
+                PurchaseLineItem(
+                    name: item.name,
+                    quantity: item.quantity.isEmpty ? "1" : item.quantity,
+                    unit: item.unit,
+                    unitPrice: item.effectiveUnitPrice,
+                    category: item.category
+                )
+            }
+        }
+    }
+}
+
+// MARK: - Fixed Shop Days Sheet
+
+struct FixedShopDaysSheet: View {
+    @Environment(KitchenStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+
+    private let weekdayNames = DateHelper.weekdayNames
+
+    var body: some View {
+        @Bindable var store = store
+        NavigationStack {
+            Form {
+                Section(footer: Text("每周的固定购物日会自动出现在购物日面板中。")) {
+                    ForEach(1...7, id: \.self) { day in
+                        let index = day - 1
+                        Toggle(weekdayNames[index], isOn: Binding(
+                            get: { store.shoppingState.fixedShopWeekdays.contains(day) },
+                            set: { enabled in
+                                if enabled {
+                                    store.shoppingState.fixedShopWeekdays.insert(day)
+                                } else {
+                                    store.shoppingState.fixedShopWeekdays.remove(day)
+                                }
+                            }
+                        ))
+                    }
+                }
+            }
+            .navigationTitle("每周固定购物日")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+}
+
+// MARK: - Add Shopping Item Sheet
+
+private struct AddShoppingItemSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var form: ShoppingItemForm
+    let shopDays: [String]
+    let onAdd: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("基本信息") {
+                    TextField("名称", text: $form.name)
+                        .onChange(of: form.name) { _, newValue in
+                            let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard trimmed.count >= 2 else { return }
+                            form.category = KitchenData.categoryGuess(for: trimmed)
+                            form.unit = KitchenData.unitGuess(for: trimmed, category: form.category)
+                        }
+                    HStack {
+                        TextField("数量", text: $form.quantity)
+                            .keyboardType(.decimalPad)
+                        Picker("单位", selection: $form.unit) {
+                            ForEach(KitchenData.units, id: \.self) { unit in
+                                Text(unit).tag(unit)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
+                    Picker("分类", selection: $form.category) {
+                        ForEach(KitchenData.categories, id: \.self) { category in
+                            Text(category).tag(category)
+                        }
+                    }
+                }
+
+                Section("其他") {
+                    TextField("参考单价 (€)", text: $form.estimatedUnitPrice)
+                        .keyboardType(.decimalPad)
+                    Picker("分配到购物日", selection: $form.day) {
+                        Text("不指定").tag("")
+                        ForEach(shopDays, id: \.self) { day in
+                            Text(day).tag(day)
+                        }
+                    }
+                }
+
+                Section {
+                    Button("添加到清单") { onAdd() }
+                        .fontWeight(.semibold)
+                        .disabled(form.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .navigationTitle("手动添加")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+}
+
+// MARK: - Shopping Day Chip
+
+private struct ShoppingDayChip: View {
+    let weekday: String
+    let dayText: String
+    let itemCount: Int
+    let isSelected: Bool
+    let isToday: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Text(weekday)
+                    .font(.caption2.weight(.semibold))
+                Text(dayText)
+                    .font(.subheadline.weight(.bold))
+                if itemCount > 0 {
+                    Text("\(itemCount)项")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(isSelected ? .green : .secondary)
+                }
+            }
+            .foregroundStyle(isSelected ? .primary : .secondary)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(
+                isSelected ? KitchenTheme.greenTint : Color(.tertiarySystemFill),
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(isSelected ? Color.green.opacity(0.3) : .clear, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
