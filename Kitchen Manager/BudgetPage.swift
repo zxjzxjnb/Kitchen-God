@@ -8,6 +8,12 @@ struct BudgetPage: View {
     @State private var editingPurchaseRecord: PurchaseRecord?
     @State private var editingTransaction: BudgetTransaction?
     @State private var showingBudgetEditor = false
+    @FocusState private var focusedField: Field?
+
+    private enum Field {
+        case amount
+        case note
+    }
 
     private var availableMonths: [String] {
         let transactionMonths = store.budgetState.transactions.compactMap { tx -> String? in
@@ -64,7 +70,7 @@ struct BudgetPage: View {
     }
 
     private var currentMonthSpent: Double {
-        currentMonthTransactions.reduce(0) { $0 + $1.amount }
+        store.monthSpent(for: selectedMonth)
     }
 
     private var currentMonthWaste: Double {
@@ -105,11 +111,10 @@ struct BudgetPage: View {
                     .cardStyle()
                     .padding(.horizontal)
 
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                        BudgetStatCard(title: "预算上限", value: store.budgetState.monthlyBudget.currencyText, tint: KitchenTheme.accentTint)
+                    HStack(spacing: 10) {
                         BudgetStatCard(title: "已支出", value: currentMonthSpent.currencyText, tint: KitchenTheme.surface)
                         BudgetStatCard(title: "待购预估", value: pendingShoppingEstimate.currencyText, tint: KitchenTheme.greenTint)
-                        BudgetStatCard(title: "浪费金额", value: currentMonthWaste.currencyText, tint: KitchenTheme.redTint)
+                        BudgetStatCard(title: "浪费", value: currentMonthWaste.currencyText, tint: KitchenTheme.redTint)
                     }
                     .padding(.horizontal)
 
@@ -121,6 +126,7 @@ struct BudgetPage: View {
                             TextField("金额", text: $form.amount)
                                 .textFieldStyle(.roundedBorder)
                                 .keyboardType(.decimalPad)
+                                .focused($focusedField, equals: .amount)
 
                             Picker("分类", selection: $form.category) {
                                 ForEach(KitchenData.budgetCategories, id: \.self) { Text($0).tag($0) }
@@ -130,6 +136,8 @@ struct BudgetPage: View {
 
                         TextField("备注（可选）", text: $form.note)
                             .textFieldStyle(.roundedBorder)
+                            .focused($focusedField, equals: .note)
+                            .submitLabel(.done)
 
                         FilledButton(title: "记录支出") { addTransaction() }
                     }
@@ -211,8 +219,14 @@ struct BudgetPage: View {
                 }
                 .padding(.vertical, 8)
             }
+            .scrollDismissesKeyboard(.interactively)
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    focusedField = nil
+                }
+            )
             .background(KitchenTheme.background)
-            .navigationTitle(selectedMonth == DateHelper.monthKey(for: Date()) ? "厨房成本" : "\(selectedMonth) 成本")
+            .navigationTitle(selectedMonth == DateHelper.monthKey(for: Date()) ? "厨房账本" : "\(selectedMonth) 成本")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Menu {
@@ -231,6 +245,13 @@ struct BudgetPage: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("设置上限") { showingBudgetEditor = true }
                         .font(.subheadline)
+                }
+
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("完成") {
+                        focusedField = nil
+                    }
                 }
             }
             .sheet(item: $editingPurchaseRecord) { record in
@@ -284,6 +305,7 @@ struct BudgetPage: View {
             date: DateHelper.todayKey
         )
         store.budgetState.transactions.append(tx)
+        focusedField = nil
         form.amount = ""
         form.note = ""
         store.showToast("已记录支出 \(amount.currencyText)")
@@ -634,7 +656,7 @@ struct BudgetLimitSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(footer: Text("这个上限会用于对比本月已支出、待采购预估和厨房浪费。")) {
+                Section(footer: Text("用于计算本月预算余量。")) {
                     HStack {
                         Text("预算金额 (€)")
                         Spacer()

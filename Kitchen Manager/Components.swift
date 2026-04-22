@@ -297,6 +297,46 @@ struct ShoppingItemRow: View {
     }
 }
 
+// MARK: - Day Chip
+
+struct DayChip: View {
+    let weekday: String
+    let dayText: String
+    let badgeCount: Int
+    let isSelected: Bool
+    let isToday: Bool
+    var accent: Color = .accentColor
+    var minHeight: CGFloat = 52
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Text(weekday)
+                    .font(.caption2.weight(.semibold))
+                Text(dayText)
+                    .font(.subheadline.weight(.bold))
+                if badgeCount > 0 {
+                    Text("\(badgeCount)项")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(isSelected ? accent : .secondary)
+                }
+            }
+            .foregroundStyle(isSelected ? .primary : .secondary)
+            .frame(maxWidth: .infinity, minHeight: minHeight)
+            .background(
+                (isSelected || isToday ? accent.opacity(0.15) : Color(.tertiarySystemFill)),
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(isSelected ? accent.opacity(0.3) : .clear, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 // MARK: - Plan Selector
 
 struct PlanSelector: View {

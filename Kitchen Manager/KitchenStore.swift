@@ -51,6 +51,22 @@ final class KitchenStore {
             .reduce(0) { $0 + $1.estimatedTotalCost }
     }
 
+    func monthSpent(for monthKey: String) -> Double {
+        budgetState.transactions.reduce(0) { partial, tx in
+            guard let date = DateHelper.date(from: tx.date),
+                  DateHelper.monthKey(for: date) == monthKey else { return partial }
+            return partial + tx.amount
+        }
+    }
+
+    var currentMonthSpent: Double {
+        monthSpent(for: DateHelper.monthKey(for: Date()))
+    }
+
+    var projectedBudgetRemaining: Double {
+        budgetState.monthlyBudget - currentMonthSpent - pendingShoppingEstimate
+    }
+
     private var saveTask: Task<Void, Never>?
     private let fileURL: URL
 

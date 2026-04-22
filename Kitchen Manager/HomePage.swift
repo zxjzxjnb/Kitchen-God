@@ -13,18 +13,8 @@ struct HomePage: View {
         todayMeals.values.filter { !$0.isEmpty }.count
     }
 
-    private var currentMonthSpent: Double {
-        let monthKey = DateHelper.monthKey(for: Date())
-        return store.budgetState.transactions.reduce(0) { partial, tx in
-            guard let date = DateHelper.date(from: tx.date), DateHelper.monthKey(for: date) == monthKey else {
-                return partial
-            }
-            return partial + tx.amount
-        }
-    }
-
     private var projectedBudgetRemaining: Double {
-        store.budgetState.monthlyBudget - currentMonthSpent - store.pendingShoppingEstimate
+        store.projectedBudgetRemaining
     }
 
     private var overviewText: String {
@@ -107,7 +97,7 @@ struct HomePage: View {
                         ZaoWangyeCardShell(
                             eyebrow: "智能厨房总管",
                             title: "灶王爷",
-                            subtitle: "今天吃什么，我来定。根据库存推荐菜谱、核对缺货，并自动补齐待购。",
+                            subtitle: "按库存推荐菜单，顺手补缺货。",
                             imageSize: 162
                         ) {
                             Text(overviewText)
@@ -145,45 +135,6 @@ struct HomePage: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.primary)
-                    .padding(.horizontal)
-
-                    // Metrics
-                    HStack(spacing: 10) {
-                        HomeMetricCard(
-                            title: "提醒",
-                            value: "\(store.alertCount)",
-                            tint: store.alertCount == 0 ? KitchenTheme.greenTint : KitchenTheme.redTint,
-                            valueColor: store.alertCount == 0 ? .green : .red
-                        )
-
-                        HomeMetricCard(
-                            title: "待购",
-                            value: "\(store.pendingShoppingCount)",
-                            tint: Color(.tertiarySystemFill),
-                            valueColor: .primary
-                        )
-
-                        HomeMetricCard(
-                            title: "余量",
-                            value: projectedBudgetRemaining.currencyText,
-                            tint: projectedBudgetRemaining >= 0 ? KitchenTheme.accentTint : KitchenTheme.redTint,
-                            valueColor: projectedBudgetRemaining >= 0 ? .accentColor : .red
-                        )
-                    }
-                    .padding(.horizontal)
-
-                    // Quick actions
-                    HStack(spacing: 10) {
-                        HomeQuickActionButton(title: "库存", symbol: "archivebox.fill") {
-                            switchTab(.inventory)
-                        }
-                        HomeQuickActionButton(title: "购物", symbol: "cart.fill") {
-                            switchTab(.shopping)
-                        }
-                        HomeQuickActionButton(title: "菜单", symbol: "menucard.fill") {
-                            switchTab(.mealPlan)
-                        }
-                    }
                     .padding(.horizontal)
 
                     // Priority alerts
@@ -317,51 +268,6 @@ private struct HomePrioritySummary: Identifiable {
     let targetTab: AppTab
 }
 
-private struct HomeMetricCard: View {
-    let title: String
-    let value: String
-    let tint: Color
-    let valueColor: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.title3.weight(.semibold).monospacedDigit())
-                .foregroundStyle(valueColor)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(tint, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-}
-
-private struct HomeQuickActionButton: View {
-    let title: String
-    let symbol: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: symbol)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.accentColor)
-                Text(title)
-                    .font(.subheadline.weight(.medium))
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
-}
-
 private struct HomePriorityRow: View {
     let summary: HomePrioritySummary
     let action: () -> Void
@@ -398,30 +304,3 @@ private struct HomePriorityRow: View {
     }
 }
 
-private struct HomeMealRow: View {
-    let slot: MealSlot
-    let meal: String?
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: slot.symbolName)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 28, height: 28)
-                .background(KitchenTheme.accentTint, in: Circle())
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(slot.title)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-                Text((meal?.isEmpty == false ? meal : "未安排") ?? "未安排")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle((meal?.isEmpty == false) ? Color.primary : Color(.tertiaryLabel))
-                    .lineLimit(1)
-            }
-
-            Spacer()
-        }
-        .padding(.vertical, 4)
-    }
-}

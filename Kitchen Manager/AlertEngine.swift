@@ -12,7 +12,7 @@ enum AlertEngine {
                 if days < 0 {
                     expired.append(AlertItem(id: item.id, label: "\(item.name)（过期 \(-days) 天）"))
                 } else if days <= 3 {
-                    expiringSoon.append(AlertItem(id: item.id, label: "\(item.name)（还剩 \(days) 天）"))
+                    expiringSoon.append(AlertItem(id: item.id, label: "\(item.name)（临期，还剩 \(days) 天）"))
                 }
             }
 
@@ -24,15 +24,15 @@ enum AlertEngine {
 
                 if !alreadyExpired {
                     if left <= 0 {
-                        notFresh.append(AlertItem(id: item.id, label: "\(item.name)（已存 \(usedDays) 天）"))
+                        notFresh.append(AlertItem(id: item.id, label: "\(item.name)（不新鲜，已存 \(usedDays) 天）"))
                     } else if left <= 2, !((expiryDays ?? 99) <= 3) {
-                        expiringSoon.append(AlertItem(id: item.id, label: "\(item.name)（新鲜还剩 \(left) 天）"))
+                        expiringSoon.append(AlertItem(id: item.id, label: "\(item.name)（新鲜期临期，还剩 \(left) 天）"))
                     }
                 }
             }
 
             if let threshold = item.threshold, let quantity = Double(item.quantity), quantity <= threshold {
-                lowStock.append(AlertItem(id: item.id, label: "\(item.name)（剩 \(item.quantity)\(item.unit)）"))
+                lowStock.append(AlertItem(id: item.id, label: "\(item.name)（库存不足，剩 \(item.quantity)\(item.unit)）"))
             }
         }
 
@@ -48,7 +48,7 @@ enum AlertEngine {
                 return InventoryStatusInfo(text: "今天到期", color: KitchenTheme.red, level: .danger)
             }
             if days <= 3 {
-                return InventoryStatusInfo(text: "还剩 \(days) 天到期", color: KitchenTheme.warn, level: .warning)
+                return InventoryStatusInfo(text: "临期，还剩 \(days) 天", color: KitchenTheme.warn, level: .warning)
             }
             return InventoryStatusInfo(text: "到期 \(expiry)", color: KitchenTheme.subtleText, level: .normal)
         }
@@ -57,15 +57,15 @@ enum AlertEngine {
             let usedDays = Calendar.current.dateComponents([.day], from: addedDate, to: Date()).day ?? 0
             let left = item.freshnessDays - usedDays
             if left <= 0 {
-                return InventoryStatusInfo(text: "建议立即食用", color: KitchenTheme.red, level: .danger)
+                return InventoryStatusInfo(text: "不新鲜", color: KitchenTheme.red, level: .danger)
             }
             if left <= 2 {
-                return InventoryStatusInfo(text: "新鲜还剩 \(left) 天", color: KitchenTheme.warn, level: .warning)
+                return InventoryStatusInfo(text: "新鲜期临期，还剩 \(left) 天", color: KitchenTheme.warn, level: .warning)
             }
         }
 
         if let threshold = item.threshold, let quantity = Double(item.quantity), quantity <= threshold {
-            return InventoryStatusInfo(text: "库存告急", color: KitchenTheme.warn, level: .warning)
+            return InventoryStatusInfo(text: "库存不足", color: KitchenTheme.warn, level: .warning)
         }
 
         return nil

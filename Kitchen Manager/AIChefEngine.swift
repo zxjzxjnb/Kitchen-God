@@ -159,7 +159,7 @@ enum AIChefEngine {
         let inventoryContext = inventory.map { "\($0.name)(\($0.quantity)\($0.unit))" }.joined(separator: ", ")
         
         let systemPrompt = """
-        你是家庭厨房助手“灶王爷”。请根据用户提供的现有食材库存，推荐 3 到 4 道菜品。
+        你是家庭厨房助手“灶王爷”。请根据用户提供的现有食材库存，推荐合适的菜品。
         可以优先使用易过期的食材。推荐的菜品可以需要少量额外购买的食材，但主要应基于现有食材。
         对每道菜都要列出做这道菜的核心食材，数量必须是数字，不要写“适量”，不要输出 Markdown。
         必须以严格的 JSON 格式输出，且根节点必须是一个 Object。

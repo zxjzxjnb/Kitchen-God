@@ -7,7 +7,6 @@ struct ShoppingPage: View {
     @State private var selectedCategory = "全部"
     @State private var showingAddForm = false
     @State private var showingFixedDays = false
-    @State private var showInlineAdd = false
     @State private var showingCheckout = false
 
     private var currentWeekDates: [Date] {
@@ -30,6 +29,10 @@ struct ShoppingPage: View {
         store.shoppingState.items.filter { $0.isChecked }
     }
 
+    private var checkedEstimatedTotal: Double {
+        checkedItems.reduce(0) { $0 + $1.estimatedTotalCost }
+    }
+
     private var pendingItems: [ShoppingItem] {
         store.shoppingState.items.filter { !$0.isChecked }
     }
@@ -38,18 +41,8 @@ struct ShoppingPage: View {
         pendingItems.reduce(0) { $0 + $1.estimatedTotalCost }
     }
 
-    private var currentMonthSpent: Double {
-        let monthKey = DateHelper.monthKey(for: Date())
-        return store.budgetState.transactions.reduce(0) { partial, tx in
-            guard let date = DateHelper.date(from: tx.date), DateHelper.monthKey(for: date) == monthKey else {
-                return partial
-            }
-            return partial + tx.amount
-        }
-    }
-
     private var projectedBudgetRemaining: Double {
-        store.budgetState.monthlyBudget - currentMonthSpent - pendingEstimatedTotal
+        store.budgetState.monthlyBudget - store.currentMonthSpent - pendingEstimatedTotal
     }
 
     private var nearestShopDay: String {
@@ -108,12 +101,14 @@ struct ShoppingPage: View {
                             ForEach(currentWeekDates, id: \.self) { date in
                                 let dateKey = DateHelper.key(for: date)
                                 let isSelected = resolvedDays.contains(dateKey)
-                                ShoppingDayChip(
+                                DayChip(
                                     weekday: DateHelper.weekdayName(for: date),
                                     dayText: DateHelper.monthDayString(date),
-                                    itemCount: pendingCount(for: dateKey),
+                                    badgeCount: pendingCount(for: dateKey),
                                     isSelected: isSelected,
-                                    isToday: dateKey == DateHelper.todayKey
+                                    isToday: dateKey == DateHelper.todayKey,
+                                    accent: .green,
+                                    minHeight: 44
                                 ) {
                                     toggleShoppingDay(dateKey)
                                 }
@@ -224,101 +219,15 @@ struct ShoppingPage: View {
                         }
                     }
 
-                    // Checkout bar (when items are checked)
-                    if completedCount > 0 {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("已勾选 \(completedCount) 项")
-                                    .font(.subheadline.weight(.semibold))
-                                Text("预估 \(checkedItems.reduce(0) { $0 + $1.estimatedTotalCost }.currencyText)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Button("结算入库") { showingCheckout = true }
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.small)
-
-                            Button("取消勾选") {
-                                for i in store.shoppingState.items.indices {
-                                    store.shoppingState.items[i].isChecked = false
-                                }
-                            }
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.secondary)
-                        }
-                        .cardStyle()
-                        .padding(.horizontal)
-                    }
-
-                    // Inline quick add — below the list
-                    VStack(alignment: .leading, spacing: 0) {
-                        Button {
-                            withAnimation(.snappy(duration: 0.25)) {
-                                showInlineAdd.toggle()
-                                if showInlineAdd { form.day = nearestShopDay }
-                            }
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "plus.circle.fill")
-                                    .foregroundStyle(Color.accentColor)
-                                Text("手动添加")
-                                    .font(.subheadline.weight(.medium))
-                                Spacer()
-                                Image(systemName: showInlineAdd ? "chevron.up" : "chevron.down")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .buttonStyle(.plain)
-
-                        if showInlineAdd {
-                            VStack(spacing: 10) {
-                                Divider().padding(.vertical, 8)
-
-                                TextField("名称", text: $form.name)
-                                    .textFieldStyle(.roundedBorder)
-                                    .onChange(of: form.name) { _, newValue in
-                                        let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                                        guard trimmed.count >= 2 else { return }
-                                        form.category = KitchenData.categoryGuess(for: trimmed)
-                                        form.unit = KitchenData.unitGuess(for: trimmed, category: form.category)
-                                    }
-
-                                HStack(spacing: 8) {
-                                    TextField("数量", text: $form.quantity)
-                                        .textFieldStyle(.roundedBorder)
-                                        .keyboardType(.decimalPad)
-                                        .frame(maxWidth: 80)
-
-                                    Picker("", selection: $form.unit) {
-                                        ForEach(KitchenData.units, id: \.self) { Text($0).tag($0) }
-                                    }
-                                    .pickerStyle(.menu)
-                                    .labelsHidden()
-
-                                    Picker("", selection: $form.category) {
-                                        ForEach(KitchenData.categories, id: \.self) { Text($0).tag($0) }
-                                    }
-                                    .pickerStyle(.menu)
-                                    .labelsHidden()
-
-                                    Spacer()
-                                }
-
-                                FilledButton(title: "添加") { addManualShoppingItem() }
-                                    .disabled(form.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                            }
-                            .transition(.opacity.combined(with: .move(edge: .top)))
-                        }
-                    }
-                    .cardStyle()
-                    .padding(.horizontal)
                 }
                 .padding(.vertical, 8)
             }
             .background(KitchenTheme.background)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                checkoutBottomBar
+            }
             .navigationTitle("购物清单")
+            .animation(.snappy(duration: 0.22), value: completedCount)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showingAddForm = true } label: {
@@ -337,6 +246,52 @@ struct ShoppingPage: View {
             .sheet(isPresented: $showingCheckout) {
                 CheckoutSheet(checkedItems: checkedItems)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var checkoutBottomBar: some View {
+        if completedCount > 0 {
+            VStack(spacing: 0) {
+                Divider()
+
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("已勾选 \(completedCount) 项")
+                            .font(.subheadline.weight(.semibold))
+                        Text("预估 \(checkedEstimatedTotal.currencyText)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Button {
+                        clearCheckedItems()
+                    } label: {
+                        Image(systemName: "xmark.circle")
+                            .font(.title3.weight(.medium))
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("取消勾选")
+
+                    Button {
+                        showingCheckout = true
+                    } label: {
+                        Label("结算入库", systemImage: "checkmark.circle.fill")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(minWidth: 108)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.regularMaterial)
+            }
+            .transition(.move(edge: .bottom).combined(with: .opacity))
         }
     }
 
@@ -376,7 +331,6 @@ struct ShoppingPage: View {
         form.estimatedUnitPrice = ""
         store.showToast("已添加 \(trimmed)")
         showingAddForm = false
-        withAnimation { showInlineAdd = false }
     }
 
     private func toggleItem(_ item: ShoppingItem) {
@@ -403,6 +357,12 @@ struct ShoppingPage: View {
         }
         store.showToast("已全部分配到 \(day == DateHelper.todayKey ? "今天" : day)")
     }
+
+    private func clearCheckedItems() {
+        for index in store.shoppingState.items.indices {
+            store.shoppingState.items[index].isChecked = false
+        }
+    }
 }
 
 // MARK: - Checkout Sheet
@@ -421,7 +381,7 @@ struct CheckoutSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Text("确认采购明细"), footer: Text("可修改实际购买数量和单价。确认后将自动入库并记录支出。")) {
+                Section(header: Text("确认采购明细"), footer: Text("确认后自动入库并记账。")) {
                     ForEach($lineItems) { $item in
                         VStack(alignment: .leading, spacing: 6) {
                             Text(item.name)
@@ -522,7 +482,7 @@ struct FixedShopDaysSheet: View {
         @Bindable var store = store
         NavigationStack {
             Form {
-                Section(footer: Text("每周的固定购物日会自动出现在购物日面板中。")) {
+                Section(footer: Text("选中的日期每周自动添加。")) {
                     ForEach(1...7, id: \.self) { day in
                         let index = day - 1
                         Toggle(weekdayNames[index], isOn: Binding(
@@ -612,43 +572,5 @@ private struct AddShoppingItemSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
-    }
-}
-
-// MARK: - Shopping Day Chip
-
-private struct ShoppingDayChip: View {
-    let weekday: String
-    let dayText: String
-    let itemCount: Int
-    let isSelected: Bool
-    let isToday: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 3) {
-                Text(weekday)
-                    .font(.caption2.weight(.semibold))
-                Text(dayText)
-                    .font(.subheadline.weight(.bold))
-                if itemCount > 0 {
-                    Text("\(itemCount)项")
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(isSelected ? .green : .secondary)
-                }
-            }
-            .foregroundStyle(isSelected ? .primary : .secondary)
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .background(
-                isSelected ? KitchenTheme.greenTint : Color(.tertiarySystemFill),
-                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(isSelected ? Color.green.opacity(0.3) : .clear, lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
     }
 }

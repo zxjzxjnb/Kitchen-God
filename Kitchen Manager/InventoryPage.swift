@@ -8,6 +8,7 @@ struct InventoryPage: View {
     @State private var editingItem: InventoryItem?
     @State private var removalCandidate: InventoryItem?
     @State private var expandedCategory: String?
+    @State private var isPriorityExpanded = false
 
     private var filteredItems: [InventoryItem] {
         selectedCategory == "全部"
@@ -28,6 +29,12 @@ struct InventoryPage: View {
     private var upcomingItems: [InventoryItem] {
         filteredItems
             .filter { insight(for: $0).focus == .upcoming }
+            .sorted(by: sortItems)
+    }
+
+    private var priorityItems: [InventoryItem] {
+        filteredItems
+            .filter { insight(for: $0).focus != nil }
             .sorted(by: sortItems)
     }
 
@@ -52,30 +59,27 @@ struct InventoryPage: View {
         filteredItems.reduce(0) { $0 + $1.estimatedRemainingValue }
     }
 
-    private var overviewHeadline: String {
-        if !criticalItems.isEmpty {
-            return "先处理 \(criticalItems.count) 样高风险食材"
-        }
-        if !upcomingItems.isEmpty {
-            return "有 \(upcomingItems.count) 样食材需要优先安排"
-        }
-        if filteredItems.isEmpty {
-            return "这个分类还没有库存"
-        }
-        return "库存状态平稳，分类更清楚了"
+    private var priorityIssueSummaries: [String] {
+        priorityItems.map(issueSummary(for:))
     }
 
     private var overviewMessage: String {
-        if !criticalItems.isEmpty {
-            return "把已经过期、今天到期，或新鲜度已经过线的食材提到最上面，方便先处理。"
-        }
-        if !upcomingItems.isEmpty {
-            return "未来几天内要优先吃掉的食材已经集中展示，做饭时会更容易决策。"
-        }
         if filteredItems.isEmpty {
-            return selectedCategory == "全部" ? "先添加几样常备食材，让库存看板开始运转。" : "换个分类看看，或者先把这个分类的食材加进来。"
+            return selectedCategory == "全部" ? "先添加食材。" : "换个分类看看。"
         }
-        return "现在可以先看顶部摘要，再往下按分类浏览，整体会更轻松。"
+        if !priorityItems.isEmpty {
+            return issueSummaryText(for: priorityItems, limit: 3)
+        }
+        return "库存状态平稳"
+    }
+
+    private var prioritySummaryTags: [String] {
+        var tags = Array(priorityIssueSummaries.prefix(3))
+        let extraCount = max(priorityIssueSummaries.count - tags.count, 0)
+        if extraCount > 0 {
+            tags.append("还有 \(extraCount) 项")
+        }
+        return tags
     }
 
     var body: some View {
@@ -83,13 +87,9 @@ struct InventoryPage: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     InventoryOverviewCard(
-                        title: selectedCategory == "全部" ? "库存总览" : "\(selectedCategory) 库存",
-                        headline: overviewHeadline,
                         message: overviewMessage,
                         itemCount: filteredItems.count,
-                        categoryCount: categorySections.count,
-                        totalValue: totalEstimatedValue,
-                        highlightCount: criticalItems.count + upcomingItems.count
+                        totalValue: totalEstimatedValue
                     )
                     .padding(.horizontal)
 
@@ -103,59 +103,33 @@ struct InventoryPage: View {
                         EmptyStateCard(
                             symbol: "archivebox.fill",
                             title: "库存为空",
-                            subtitle: "先加几样常备食材。"
+                            subtitle: "先添加食材。"
                         )
                         .padding(.horizontal)
                     } else {
-                        if criticalItems.isEmpty && upcomingItems.isEmpty {
+                        if priorityItems.isEmpty {
                             NoAlertCard()
                                 .padding(.horizontal)
                         } else {
-                            if !criticalItems.isEmpty {
-                                InventoryFocusCard(
-                                    title: "马上处理",
-                                    subtitle: "已过期、今天到期，或需要立刻优先食用",
-                                    symbol: "exclamationmark.triangle.fill",
-                                    accent: KitchenTheme.red,
-                                    tint: KitchenTheme.redTint,
-                                    items: criticalItems,
-                                    showCategory: selectedCategory == "全部",
-                                    insight: insight(for:),
-                                    onAdjust: { item, delta in adjustQuantity(for: item, delta: delta) },
-                                    onDelete: prepareRemoval,
-                                    onEdit: { editingItem = $0 }
-                                )
-                                .padding(.horizontal)
-                            }
-
-                            if !upcomingItems.isEmpty {
-                                InventoryFocusCard(
-                                    title: "这几天先吃",
-                                    subtitle: "未来 3 天内到期，或新鲜度快到上限",
-                                    symbol: "clock.badge.fill",
-                                    accent: KitchenTheme.warn,
-                                    tint: KitchenTheme.warnTint,
-                                    items: upcomingItems,
-                                    showCategory: selectedCategory == "全部",
-                                    insight: insight(for:),
-                                    onAdjust: { item, delta in adjustQuantity(for: item, delta: delta) },
-                                    onDelete: prepareRemoval,
-                                    onEdit: { editingItem = $0 }
-                                )
-                                .padding(.horizontal)
-                            }
+                            InventoryFocusCard(
+                                title: "需要处理",
+                                symbol: "clock.badge.exclamationmark.fill",
+                                accent: criticalItems.isEmpty ? KitchenTheme.warn : KitchenTheme.red,
+                                tint: criticalItems.isEmpty ? KitchenTheme.warnTint : KitchenTheme.redTint,
+                                items: priorityItems,
+                                summaryTags: prioritySummaryTags,
+                                isExpanded: isPriorityExpanded,
+                                showCategory: false,
+                                insight: insight(for:),
+                                onToggle: { isPriorityExpanded.toggle() },
+                                onAdjust: { item, delta in adjustQuantity(for: item, delta: delta) },
+                                onDelete: prepareRemoval,
+                                onEdit: { editingItem = $0 }
+                            )
+                            .padding(.horizontal)
                         }
 
                         VStack(alignment: .leading, spacing: 12) {
-                            HStack {
-                                Text(selectedCategory == "全部" ? "按分类查看" : "库存明细")
-                                    .font(.headline)
-                                Spacer()
-                                Text("\(filteredItems.count) 项")
-                                    .font(.caption.weight(.medium))
-                                    .foregroundStyle(.secondary)
-                            }
-
                             ForEach(categorySections) { section in
                                 InventoryCategorySectionCard(
                                     section: section,
@@ -163,6 +137,7 @@ struct InventoryPage: View {
                                     isExpanded: expandedCategory == section.category,
                                     showCategory: false,
                                     insight: insight(for:),
+                                    issueSummary: issueSummary(for:),
                                     onToggle: { toggleCategorySection(section.category) },
                                     onAdjust: { item, delta in adjustQuantity(for: item, delta: delta) },
                                     onDelete: prepareRemoval,
@@ -179,8 +154,10 @@ struct InventoryPage: View {
             .navigationTitle("库存管理")
             .animation(.snappy(duration: 0.28), value: selectedCategory)
             .animation(.snappy(duration: 0.28), value: expandedCategory)
+            .animation(.snappy(duration: 0.28), value: isPriorityExpanded)
             .onChange(of: selectedCategory) { _, newValue in
                 expandedCategory = newValue == "全部" ? nil : newValue
+                isPriorityExpanded = false
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -294,6 +271,44 @@ struct InventoryPage: View {
         return lhs.name.localizedCompare(rhs.name) == .orderedAscending
     }
 
+    private func issueSummaryText(for items: [InventoryItem], limit: Int) -> String {
+        let summaries = items.prefix(limit).map(issueSummary(for:))
+        let extraCount = max(items.count - summaries.count, 0)
+        let text = summaries.joined(separator: "、")
+        return extraCount > 0 ? "\(text)，还有 \(extraCount) 项" : text
+    }
+
+    private func issueSummary(for item: InventoryItem) -> String {
+        if let expiryKey = item.expiryDate, let days = daysUntil(dateKey: expiryKey) {
+            if days < 0 {
+                return "\(item.name)已过期"
+            }
+            if days == 0 {
+                return "\(item.name)今天到期"
+            }
+            if days <= 3 {
+                return "\(item.name)临期"
+            }
+        }
+
+        if item.freshnessDays > 0, let addedDate = DateHelper.date(from: item.addedDate) {
+            let usedDays = Calendar.current.dateComponents([.day], from: addedDate, to: Date()).day ?? 0
+            let leftDays = item.freshnessDays - usedDays
+            if leftDays <= 0 {
+                return "\(item.name)不新鲜"
+            }
+            if leftDays <= 2 {
+                return "\(item.name)新鲜期临期"
+            }
+        }
+
+        if let threshold = item.threshold, item.quantityValue <= threshold {
+            return "\(item.name)库存不足"
+        }
+
+        return "\(item.name)需要处理"
+    }
+
     private func insight(for item: InventoryItem) -> InventoryItemInsight {
         let status = AlertEngine.status(for: item)
 
@@ -304,7 +319,7 @@ struct InventoryPage: View {
                 return InventoryItemInsight(
                     status: status,
                     focus: .critical,
-                    detail: "\(dateText) 已过期 \(-days) 天，建议立即处理",
+                    detail: "",
                     sortRank: 0
                 )
             }
@@ -313,7 +328,7 @@ struct InventoryPage: View {
                 return InventoryItemInsight(
                     status: status,
                     focus: .critical,
-                    detail: "今天到期，建议今天优先用掉",
+                    detail: "",
                     sortRank: 1
                 )
             }
@@ -322,7 +337,7 @@ struct InventoryPage: View {
                 return InventoryItemInsight(
                     status: status,
                     focus: .upcoming,
-                    detail: "\(dateText) 到期，还剩 \(days) 天",
+                    detail: "",
                     sortRank: 10 + days
                 )
             }
@@ -370,7 +385,7 @@ struct InventoryPage: View {
             return InventoryItemInsight(
                 status: status,
                 focus: nil,
-                detail: "低于阈值 \(threshold.cleanString)\(item.unit)，记得补货",
+                detail: "库存偏低，记得补货",
                 sortRank: 80
             )
         }
@@ -442,51 +457,21 @@ private enum InventoryPalette {
 }
 
 private struct InventoryOverviewCard: View {
-    let title: String
-    let headline: String
     let message: String
     let itemCount: Int
-    let categoryCount: Int
     let totalValue: Double
-    let highlightCount: Int
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(title)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.82))
-
-                    Text(headline)
-                        .font(.title3.weight(.bold))
-                        .foregroundStyle(.white)
-
-                    Text(message)
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.92))
-                }
-
-                Spacer(minLength: 0)
-
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text(highlightCount == 0 ? "状态" : "优先处理")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.8))
-
-                    Text(highlightCount == 0 ? "稳定" : "\(highlightCount)")
-                        .font(.title2.weight(.heavy).monospacedDigit())
-                        .foregroundStyle(.white)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            if !message.isEmpty {
+                Text(message)
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.92))
             }
 
             HStack(spacing: 10) {
-                InventoryOverviewMetric(title: "食材", value: "\(itemCount)")
-                InventoryOverviewMetric(title: "分类", value: "\(categoryCount)")
-                InventoryOverviewMetric(title: "价值", value: totalValue.currencyText)
+                InventoryOverviewMetric(title: "当前库存", value: "\(itemCount) 项")
+                InventoryOverviewMetric(title: "库存估值", value: totalValue.currencyText)
             }
         }
         .padding(18)
@@ -535,15 +520,6 @@ private struct InventoryCategoryFilter: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("分类筛选")
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                Text("\(selectedCategory == "全部" ? totalCount : counts[selectedCategory, default: 0]) 项")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-            }
-
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     InventoryCategoryChip(
@@ -611,53 +587,68 @@ private struct InventoryCategoryChip: View {
 
 private struct InventoryFocusCard: View {
     let title: String
-    let subtitle: String
     let symbol: String
     let accent: Color
     let tint: Color
     let items: [InventoryItem]
+    let summaryTags: [String]
+    let isExpanded: Bool
     let showCategory: Bool
     let insight: (InventoryItem) -> InventoryItemInsight
+    let onToggle: () -> Void
     let onAdjust: (InventoryItem, Double) -> Void
     let onDelete: (InventoryItem) -> Void
     let onEdit: (InventoryItem) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
+            Button(action: onToggle) {
+                HStack(alignment: .center, spacing: 12) {
                     Label(title, systemImage: symbol)
                         .font(.headline)
                         .foregroundStyle(accent)
 
-                    Text(subtitle)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    Spacer()
+
+                    Text(isExpanded ? "收起" : "展开")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(accent)
+
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(accent)
                 }
-
-                Spacer()
-
-                Text("\(items.count) 项")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(accent)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(accent.opacity(0.12), in: Capsule())
             }
+            .buttonStyle(.plain)
 
-            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                InventoryItemRow(
-                    item: item,
-                    insight: insight(item),
-                    showCategory: showCategory,
-                    onAdjust: { onAdjust(item, $0) },
-                    onDelete: { onDelete(item) },
-                    onEdit: { onEdit(item) }
-                )
+            if isExpanded {
+                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                    InventoryItemRow(
+                        item: item,
+                        insight: insight(item),
+                        showCategory: showCategory,
+                        onAdjust: { onAdjust(item, $0) },
+                        onDelete: { onDelete(item) },
+                        onEdit: { onEdit(item) }
+                    )
 
-                if index < items.count - 1 {
-                    Divider()
-                        .padding(.horizontal, 6)
+                    if index < items.count - 1 {
+                        Divider()
+                            .padding(.horizontal, 6)
+                    }
+                }
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(summaryTags.enumerated()), id: \.offset) { entry in
+                            Text(entry.element)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(accent)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(accent.opacity(0.12), in: Capsule())
+                        }
+                    }
                 }
             }
         }
@@ -683,29 +674,33 @@ private struct InventoryCategorySectionCard: View {
     let isExpanded: Bool
     let showCategory: Bool
     let insight: (InventoryItem) -> InventoryItemInsight
+    let issueSummary: (InventoryItem) -> String
     let onToggle: () -> Void
     let onAdjust: (InventoryItem, Double) -> Void
     let onDelete: (InventoryItem) -> Void
     let onEdit: (InventoryItem) -> Void
 
+    private var issueItems: [InventoryItem] {
+        section.items.filter { insight($0).focus != nil }
+    }
+
     private var summaryText: String {
-        if section.criticalCount > 0 {
-            return "\(section.criticalCount) 项马上处理"
-        }
-        if section.upcomingCount > 0 {
-            return "\(section.upcomingCount) 项建议先吃"
+        let summaries = issueItems.prefix(2).map(issueSummary)
+        if !summaries.isEmpty {
+            let extraCount = max(issueItems.count - summaries.count, 0)
+            let text = summaries.joined(separator: "、")
+            return extraCount > 0 ? "\(text)，还有 \(extraCount) 项" : text
         }
         return "分类清晰，状态稳定"
     }
 
     private var collapsedStats: [String] {
-        var stats = ["\(section.items.count) 项", "约 \(section.totalValue.currencyText)"]
-        if section.criticalCount > 0 {
-            stats.append("\(section.criticalCount) 项马上处理")
-        } else if section.upcomingCount > 0 {
-            stats.append("\(section.upcomingCount) 项先吃")
+        let summaries = issueItems.prefix(3).map(issueSummary)
+        if !summaries.isEmpty {
+            let extraCount = max(issueItems.count - summaries.count, 0)
+            return extraCount > 0 ? summaries + ["还有 \(extraCount) 项"] : summaries
         }
-        return stats
+        return ["\(section.items.count) 项", "约 \(section.totalValue.currencyText)"]
     }
 
     var body: some View {
@@ -755,31 +750,15 @@ private struct InventoryCategorySectionCard: View {
                     }
                 }
             } else {
-                VStack(alignment: .leading, spacing: 10) {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(Array(collapsedStats.enumerated()), id: \.offset) { entry in
-                                Text(entry.element)
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(accent)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(accent.opacity(0.12), in: Capsule())
-                            }
-                        }
-                    }
-
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(section.previewItems) { item in
-                                Text(item.name)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(KitchenTheme.surface, in: Capsule())
-                            }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(collapsedStats.enumerated()), id: \.offset) { entry in
+                            Text(entry.element)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(accent)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(accent.opacity(0.12), in: Capsule())
                         }
                     }
                 }
@@ -815,6 +794,7 @@ private struct InventoryItemRow: View {
                         Text(item.name)
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(KitchenTheme.text)
+                            .lineLimit(1)
 
                         if showCategory {
                             CategoryTag(
@@ -824,18 +804,21 @@ private struct InventoryItemRow: View {
                             )
                         }
 
+                        if let status = insight.status {
+                            Text(status.text)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(status.color)
+                                .lineLimit(1)
+                        }
+
                         Spacer(minLength: 0)
                     }
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        if let status = insight.status {
-                            InventoryStatusBadge(status: status)
-                        }
-
+                    if !insight.detail.isEmpty {
                         Text(insight.detail)
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .lineLimit(2)
+                            .lineLimit(1)
                     }
                 }
 
@@ -856,9 +839,6 @@ private struct InventoryItemRow: View {
 
                     HStack(spacing: 10) {
                         Text("约 \(item.estimatedRemainingValue.currencyText)")
-                        if let threshold = item.threshold {
-                            Text("阈值 \(threshold.cleanString)\(item.unit)")
-                        }
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -905,19 +885,6 @@ private struct InventoryItemRow: View {
         case nil:
             return insight.status?.color.opacity(0.24) ?? KitchenTheme.borderSoft
         }
-    }
-}
-
-private struct InventoryStatusBadge: View {
-    let status: InventoryStatusInfo
-
-    var body: some View {
-        Text(status.text)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(status.color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(status.color.opacity(0.12), in: Capsule())
     }
 }
 
