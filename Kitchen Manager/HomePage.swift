@@ -5,229 +5,183 @@ struct HomePage: View {
     @State private var showingSettings = false
     let switchTab: (AppTab) -> Void
 
+    private let mealSlots: [MealSlot] = [.breakfast, .lunch, .dinner]
+
     private var todayMeals: [MealSlot: String] {
         store.mealPlans[DateHelper.todayKey] ?? [:]
     }
 
     private var plannedMealCount: Int {
-        todayMeals.values.filter { !$0.isEmpty }.count
+        mealSlots.filter { todayMeals[$0]?.isEmpty == false }.count
     }
 
     private var projectedBudgetRemaining: Double {
         store.projectedBudgetRemaining
     }
 
-    private var overviewText: String {
-        if let first = prioritySummaries.first {
-            return "\(first.detail) 需要优先处理。"
-        }
-        if plannedMealCount == 0 {
-            return "今天状态很轻，但菜单还没安排。"
-        }
-        return "今天一切平稳，照着现有安排推进就可以。"
+    private var quickPrompts: [String] {
+        ["低预算晚餐", "用临期食材", "清冰箱菜单"]
     }
 
-    private var prioritySummaries: [HomePrioritySummary] {
-        var summaries: [HomePrioritySummary] = []
+    private var homeRecommendation: HomeRecommendation? {
+        let alerts = store.alerts
 
-        if !store.alerts.expired.isEmpty {
-            summaries.append(
-                HomePrioritySummary(
-                    title: "过期",
-                    detail: previewText(for: store.alerts.expired),
-                    count: store.alerts.expired.count,
-                    symbol: "exclamationmark.triangle.fill",
-                    tint: KitchenTheme.redTint,
-                    color: .red,
-                    targetTab: .inventory
-                )
-            )
+        if let item = firstInventoryItem(matching: alerts.expired) {
+            return recommendation(for: item, issue: .expired)
         }
-
-        if !store.alerts.notFresh.isEmpty {
-            summaries.append(
-                HomePrioritySummary(
-                    title: "不新鲜",
-                    detail: previewText(for: store.alerts.notFresh),
-                    count: store.alerts.notFresh.count,
-                    symbol: "fork.knife.circle.fill",
-                    tint: KitchenTheme.redTint,
-                    color: .red,
-                    targetTab: .mealPlan
-                )
-            )
+        if let item = firstInventoryItem(matching: alerts.notFresh) {
+            return recommendation(for: item, issue: .notFresh)
         }
-
-        if !store.alerts.expiringSoon.isEmpty {
-            summaries.append(
-                HomePrioritySummary(
-                    title: "将到期",
-                    detail: previewText(for: store.alerts.expiringSoon),
-                    count: store.alerts.expiringSoon.count,
-                    symbol: "clock.fill",
-                    tint: KitchenTheme.warnTint,
-                    color: .orange,
-                    targetTab: .mealPlan
-                )
-            )
+        if let item = firstInventoryItem(matching: alerts.expiringSoon) {
+            return recommendation(for: item, issue: .expiringSoon)
         }
-
-        if !store.alerts.lowStock.isEmpty {
-            summaries.append(
-                HomePrioritySummary(
-                    title: "库存低",
-                    detail: previewText(for: store.alerts.lowStock),
-                    count: store.alerts.lowStock.count,
-                    symbol: "shippingbox.fill",
-                    tint: KitchenTheme.greenTint,
-                    color: .green,
-                    targetTab: .shopping
-                )
-            )
+        if let item = firstInventoryItem(matching: alerts.lowStock) {
+            return recommendation(for: item, issue: .lowStock)
         }
-
-        return summaries
+        if let item = store.inventoryItems.first {
+            return recommendation(for: item, issue: .steady)
+        }
+        return nil
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    Button { switchTab(.mealPlan) } label: {
-                        ZaoWangyeCardShell(
-                            eyebrow: "智能厨房总管",
-                            title: "灶王爷",
-                            subtitle: "按库存推荐菜单，顺手补缺货。",
-                            imageSize: 162
-                        ) {
-                            Text(overviewText)
-                                .font(.subheadline)
-                                .foregroundStyle(KitchenTheme.zaoCream.opacity(0.92))
-
+                    ZaoWangyeCardShell(
+                        eyebrow: "灶王爷 AI",
+                        title: "问问灶王爷",
+                        subtitle: "今晚想吃什么？",
+                        imageSize: 118
+                    ) {
+                        Button { switchTab(.mealPlan) } label: {
                             HStack(spacing: 10) {
-                                ZaoWangyeStatPill(
-                                    symbol: "menucard.fill",
-                                    title: "今日菜单",
-                                    value: plannedMealCount == 0 ? "待安排" : "\(plannedMealCount) 项"
-                                )
-
-                                ZaoWangyeStatPill(
-                                    symbol: "cart.fill",
-                                    title: "待购",
-                                    value: "\(store.pendingShoppingCount) 项",
-                                    accent: KitchenTheme.zaoMint
-                                )
-                            }
-
-                            HStack(spacing: 10) {
-                                Label("打开灶王爷", systemImage: "sparkles")
+                                Image(systemName: "sparkles")
                                     .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(KitchenTheme.brandCrimson)
+                                    .frame(width: 30, height: 30)
+                                    .background(KitchenTheme.brandCrimson.opacity(0.10), in: Circle())
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("打开完整助手")
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(KitchenTheme.textPrimary)
+                                    Text("点菜、生成菜谱、同步待购食材")
+                                        .font(.caption)
+                                        .foregroundStyle(KitchenTheme.textSecondary)
+                                }
+
                                 Spacer()
-                                Text(projectedBudgetRemaining >= 0 ? "预算余量 \(projectedBudgetRemaining.currencyText)" : "超支 \(abs(projectedBudgetRemaining).currencyText)")
-                                    .font(.caption.weight(.medium))
-                                    .foregroundStyle(KitchenTheme.zaoCream.opacity(0.88))
+
                                 Image(systemName: "arrow.right.circle.fill")
                                     .font(.title3.weight(.semibold))
-                                    .foregroundStyle(KitchenTheme.zaoGold)
+                                    .foregroundStyle(KitchenTheme.brandCrimson)
                             }
+                            .padding(KitchenTheme.Spacing.md)
+                            .background(
+                                KitchenTheme.surfaceElevated,
+                                in: RoundedRectangle(cornerRadius: KitchenTheme.Radius.md + 2, style: .continuous)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: KitchenTheme.Radius.md + 2, style: .continuous)
+                                    .strokeBorder(KitchenTheme.separator.opacity(0.45), lineWidth: 0.5)
+                            )
                         }
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.primary)
-                    .padding(.horizontal)
+                        .buttonStyle(KitchenPressStyle())
 
-                    // Priority alerts
-                    if prioritySummaries.isEmpty {
-                        NoAlertCard()
-                            .padding(.horizontal)
-                    } else {
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                Text("优先处理")
-                                    .font(.headline)
-                                Spacer()
-                                Text("\(store.alertCount) 条提醒")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            ForEach(Array(prioritySummaries.prefix(3))) { summary in
-                                HomePriorityRow(summary: summary) {
-                                    switchTab(summary.targetTab)
+                        HStack(spacing: 8) {
+                            ForEach(quickPrompts, id: \.self) { prompt in
+                                KitchenChip(title: prompt, style: .tinted, color: KitchenTheme.brandCrimson) {
+                                    switchTab(.mealPlan)
                                 }
                             }
                         }
-                        .cardStyle()
-                        .padding(.horizontal)
                     }
+                    .padding(.horizontal)
 
-                    // Today's meal schedule
-                    VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 10) {
+                        HomeMetricPill(
+                            title: "提醒",
+                            value: "\(store.alertCount)",
+                            symbol: store.alertCount == 0 ? "checkmark.seal.fill" : "exclamationmark.triangle.fill",
+                            accent: store.alertCount == 0 ? KitchenTheme.success : KitchenTheme.warning
+                        ) {
+                            switchTab(.inventory)
+                        }
+
+                        HomeMetricPill(
+                            title: "待购",
+                            value: "\(store.pendingShoppingCount)",
+                            symbol: "cart.fill",
+                            accent: KitchenTheme.brandCrimson
+                        ) {
+                            switchTab(.shopping)
+                        }
+
+                        HomeMetricPill(
+                            title: projectedBudgetRemaining >= 0 ? "预算余量" : "已超支",
+                            value: projectedBudgetRemaining >= 0 ? projectedBudgetRemaining.currencyText : abs(projectedBudgetRemaining).currencyText,
+                            symbol: projectedBudgetRemaining >= 0 ? "banknote.fill" : "exclamationmark.triangle.fill",
+                            accent: projectedBudgetRemaining >= 0 ? KitchenTheme.brandGold : KitchenTheme.danger
+                        ) {
+                            switchTab(.budget)
+                        }
+                    }
+                    .padding(.horizontal)
+
+                    VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Text("今日安排")
                                 .font(.headline)
                             Spacer()
                             Button { switchTab(.mealPlan) } label: {
-                                Text("本周")
+                                Text(plannedMealCount == 0 ? "去安排" : "本周")
                                     .font(.caption.weight(.medium))
                             }
                         }
 
-                        let planned = MealSlot.allCases.filter { todayMeals[$0]?.isEmpty == false }
-                        if planned.isEmpty {
-                            Button { switchTab(.mealPlan) } label: {
-                                HStack {
-                                    Image(systemName: "plus.circle")
-                                        .foregroundStyle(Color.accentColor)
-                                    Text("还没安排今天的菜单")
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                    Spacer()
-                                }
-                                .padding(.vertical, 6)
-                            }
-                            .buttonStyle(.plain)
-                        } else {
-                            ForEach(planned) { slot in
-                                let meal = todayMeals[slot] ?? ""
-                                let isDone = meal.hasPrefix("✅")
-                                let displayName = isDone ? String(meal.dropFirst(2)) : meal
-                                HStack(spacing: 10) {
-                                    Button {
-                                        if !isDone {
-                                            store.completeMeal(dateKey: DateHelper.todayKey, slot: slot)
-                                            store.showToast("\(slot.title) 已完成")
-                                        }
-                                    } label: {
-                                        Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
-                                            .font(.title3)
-                                            .foregroundStyle(isDone ? .green : Color(.tertiaryLabel))
+                        VStack(spacing: 8) {
+                            ForEach(mealSlots) { slot in
+                                HomeMealRow(
+                                    slot: slot,
+                                    meal: todayMeals[slot],
+                                    onEdit: { switchTab(.mealPlan) },
+                                    onComplete: {
+                                        store.completeMeal(dateKey: DateHelper.todayKey, slot: slot)
+                                        store.showToast("好,这顿\(slot.title)吃完了。", kind: .success)
                                     }
-                                    .buttonStyle(.plain)
-
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        Text(slot.title)
-                                            .font(.caption2.weight(.medium))
-                                            .foregroundStyle(.secondary)
-                                        Text(displayName)
-                                            .font(.subheadline)
-                                            .strikethrough(isDone)
-                                            .foregroundStyle(isDone ? .secondary : .primary)
-                                    }
-                                    Spacer()
-                                }
+                                )
                             }
                         }
+
+                        Divider()
+
+                        HomeHydrationRow(
+                            amountML: store.todayHydrationAmountML,
+                            goalML: store.dailyWaterGoalML,
+                            onAddWater: {
+                                store.addHydration(amountML: 250, drinkName: "水")
+                            }
+                        )
                     }
                     .cardStyle()
                     .padding(.horizontal)
+
+                    if let recommendation = homeRecommendation {
+                        HomeRecommendationCard(recommendation: recommendation) {
+                            switchTab(.mealPlan)
+                        }
+                        .padding(.horizontal)
+                    }
                 }
                 .padding(.vertical, 8)
             }
             .background(KitchenTheme.background)
             .navigationTitle("今天 \(DateHelper.monthDayString(Date()))")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    KitchenBrandMark()
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showingSettings = true } label: {
                         Image(systemName: "gearshape")
@@ -240,67 +194,336 @@ struct HomePage: View {
         }
     }
 
-    private func previewText(for items: [AlertItem]) -> String {
-        let names = items.prefix(2).map { shortLabel($0.label) }
-        let extraCount = max(items.count - names.count, 0)
-        let summary = names.joined(separator: "、")
-        return extraCount > 0 ? "\(summary) +\(extraCount)" : summary
+    private func firstInventoryItem(matching alerts: [AlertItem]) -> InventoryItem? {
+        for alert in alerts {
+            if let item = store.inventoryItems.first(where: { $0.id == alert.id }) {
+                return item
+            }
+        }
+        return nil
     }
 
-    private func shortLabel(_ label: String) -> String {
-        label
-            .components(separatedBy: "（")
-            .first?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? label
+    private func recommendation(for item: InventoryItem, issue: HomeRecommendationIssue) -> HomeRecommendation {
+        HomeRecommendation(
+            dish: recommendedDish(for: item, issue: issue),
+            reason: recommendationReason(for: item, issue: issue),
+            ingredientName: item.name,
+            issueTitle: issue.title,
+            symbol: issue.symbol,
+            accent: issue.accent
+        )
+    }
+
+    private func recommendedDish(for item: InventoryItem, issue: HomeRecommendationIssue) -> String {
+        let name = KitchenData.normalizedIngredientName(item.name)
+
+        if issue == .expired {
+            return "确认\(item.name)"
+        }
+        if issue == .lowStock {
+            return "补齐\(item.name)"
+        }
+        if name.contains("番茄") || name.contains("西红柿") {
+            return "番茄鸡蛋面"
+        }
+        if name.contains("豆腐") {
+            return "菌菇豆腐汤"
+        }
+        if name.contains("鸡胸肉") || name.contains("鸡肉") {
+            return "香煎鸡胸肉"
+        }
+        if name.contains("牛奶") {
+            return "燕麦牛奶杯"
+        }
+        if name.contains("土豆") || name.contains("马铃薯") {
+            return "土豆炖牛肉"
+        }
+        if item.category == "蔬菜" {
+            return "\(item.name)快手菜"
+        }
+        if item.category == "肉类" || item.category == "海鲜" {
+            return "\(item.name)主菜"
+        }
+        return item.usageSuggestion.isEmpty ? "清冰箱晚餐" : item.usageSuggestion
+    }
+
+    private func recommendationReason(for item: InventoryItem, issue: HomeRecommendationIssue) -> String {
+        switch issue {
+        case .expired:
+            return "\(item.name)已经过期，建议先确认能否处理。"
+        case .notFresh:
+            return "\(item.name)新鲜度下降，适合今天安排掉。"
+        case .expiringSoon:
+            return "\(item.name)快到期，优先放进今晚菜单。"
+        case .lowStock:
+            return "\(item.name)库存偏低，下次采购可以补上。"
+        case .steady:
+            return "库存状态平稳，可以按现有食材安排一餐。"
+        }
     }
 }
 
 // MARK: - Supporting Views
 
-private struct HomePrioritySummary: Identifiable {
-    let id = UUID()
+private struct HomeMetricPill: View {
     let title: String
-    let detail: String
-    let count: Int
+    let value: String
     let symbol: String
-    let tint: Color
-    let color: Color
-    let targetTab: AppTab
-}
-
-private struct HomePriorityRow: View {
-    let summary: HomePrioritySummary
+    let accent: Color
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: summary.symbol)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(summary.color)
-                    .frame(width: 32, height: 32)
-                    .background(summary.tint, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            VStack(alignment: .leading, spacing: 8) {
+                Image(systemName: symbol)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(accent)
+                    .frame(width: 26, height: 26)
+                    .background(accent.opacity(0.12), in: Circle())
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(summary.title)
-                        .font(.subheadline.weight(.semibold))
-                    Text(summary.detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Text(title)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(KitchenTheme.textSecondary)
                         .lineLimit(1)
+
+                    Text(value)
+                        .font(.subheadline.weight(.bold).monospacedDigit())
+                        .foregroundStyle(KitchenTheme.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.65)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
+            .background(
+                KitchenTheme.surfaceElevated,
+                in: RoundedRectangle(cornerRadius: KitchenTheme.Radius.md, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: KitchenTheme.Radius.md, style: .continuous)
+                    .strokeBorder(KitchenTheme.separator.opacity(0.45), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(KitchenPressStyle())
+    }
+}
+
+private struct HomeMealRow: View {
+    let slot: MealSlot
+    let meal: String?
+    let onEdit: () -> Void
+    let onComplete: () -> Void
+
+    private var trimmedMeal: String {
+        meal?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private var isDone: Bool {
+        trimmedMeal.hasPrefix("✅")
+    }
+
+    private var displayName: String {
+        isDone ? String(trimmedMeal.dropFirst(2)) : trimmedMeal
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button {
+                if trimmedMeal.isEmpty {
+                    onEdit()
+                } else if !isDone {
+                    onComplete()
+                }
+            } label: {
+                Image(systemName: trimmedMeal.isEmpty ? "plus.circle" : (isDone ? "checkmark.circle.fill" : "circle"))
+                    .font(.title3)
+                    .foregroundStyle(isDone ? KitchenTheme.brandGold : KitchenTheme.brandCrimson)
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+
+            Button(action: onEdit) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(slot.title)
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(KitchenTheme.textSecondary)
+
+                        Text(displayName.isEmpty ? "待安排" : displayName)
+                            .font(.subheadline)
+                            .strikethrough(isDone)
+                            .foregroundStyle(displayName.isEmpty ? KitchenTheme.textTertiary : (isDone ? KitchenTheme.textSecondary : KitchenTheme.textPrimary))
+                            .lineLimit(1)
+                    }
+
+                    Spacer()
+                }
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+private struct HomeHydrationRow: View {
+    let amountML: Int
+    let goalML: Int
+    let onAddWater: () -> Void
+
+    private var safeGoalML: Int {
+        max(goalML, 1)
+    }
+
+    private var progress: Double {
+        min(Double(amountML) / Double(safeGoalML), 1)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: "drop.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.blue)
+                    .frame(width: 30, height: 30)
+                    .background(Color.blue.opacity(0.10), in: Circle())
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("今日饮水")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(KitchenTheme.textPrimary)
+                    Text("\(amountML) / \(safeGoalML) ml")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(KitchenTheme.textSecondary)
                 }
 
                 Spacer()
 
-                Text("\(summary.count)")
-                    .font(.subheadline.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(summary.color)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(summary.tint, in: Capsule())
+                Button("+250ml", action: onAddWater)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(KitchenTheme.brandCrimson)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(KitchenTheme.brandCrimson.opacity(0.08), in: Capsule())
             }
+
+            ProgressView(value: progress)
+                .tint(KitchenTheme.brandCrimson)
         }
-        .buttonStyle(.plain)
+        .padding(.vertical, 2)
     }
 }
 
+private struct HomeRecommendationCard: View {
+    let recommendation: HomeRecommendation
+    let action: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("灶王爷推荐")
+                    .font(.headline)
+                Spacer()
+                Text(recommendation.issueTitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(recommendation.accent)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(recommendation.accent.opacity(0.10), in: Capsule())
+            }
+
+            HStack(alignment: .top, spacing: 12) {
+                Image("ZaoWangyeHero")
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFill()
+                    .frame(width: 54, height: 54)
+                    .clipShape(Circle())
+                    .overlay(
+                        Circle().strokeBorder(KitchenTheme.brandGold.opacity(0.65), lineWidth: 1)
+                    )
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(recommendation.dish)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(KitchenTheme.textPrimary)
+                        .lineLimit(2)
+
+                    Text(recommendation.reason)
+                        .font(.subheadline)
+                        .foregroundStyle(KitchenTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Label("关联食材：\(recommendation.ingredientName)", systemImage: recommendation.symbol)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(recommendation.accent)
+                }
+            }
+
+            Button(action: action) {
+                HStack {
+                    Label("去菜单页查看", systemImage: "menucard.fill")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.title3.weight(.semibold))
+                }
+                .foregroundStyle(KitchenTheme.brandCrimson)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    KitchenTheme.brandCrimson.opacity(0.06),
+                    in: RoundedRectangle(cornerRadius: KitchenTheme.Radius.md, style: .continuous)
+                )
+            }
+            .buttonStyle(KitchenPressStyle())
+        }
+        .cardStyle()
+    }
+}
+
+private struct HomeRecommendation {
+    let dish: String
+    let reason: String
+    let ingredientName: String
+    let issueTitle: String
+    let symbol: String
+    let accent: Color
+}
+
+private enum HomeRecommendationIssue {
+    case expired
+    case notFresh
+    case expiringSoon
+    case lowStock
+    case steady
+
+    var title: String {
+        switch self {
+        case .expired: return "先确认"
+        case .notFresh: return "今天处理"
+        case .expiringSoon: return "快到期"
+        case .lowStock: return "待补货"
+        case .steady: return "可安排"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .expired: return "exclamationmark.triangle.fill"
+        case .notFresh: return "fork.knife.circle.fill"
+        case .expiringSoon: return "clock.fill"
+        case .lowStock: return "shippingbox.fill"
+        case .steady: return "checkmark.seal.fill"
+        }
+    }
+
+    var accent: Color {
+        switch self {
+        case .expired, .notFresh: return KitchenTheme.danger
+        case .expiringSoon: return KitchenTheme.warning
+        case .lowStock: return KitchenTheme.brandCrimson
+        case .steady: return KitchenTheme.success
+        }
+    }
+}

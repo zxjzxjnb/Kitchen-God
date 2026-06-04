@@ -86,36 +86,50 @@ struct BudgetPage: View {
         store.budgetState.monthlyBudget - currentMonthSpent - pendingShoppingEstimate
     }
 
+    private var selectedMonthText: String {
+        let parts = selectedMonth.split(separator: "-")
+        guard parts.count == 2, let month = Int(parts[1]) else { return selectedMonth }
+        return "\(parts[0])年\(month)月"
+    }
+
+    private var budgetUseText: String {
+        guard store.budgetState.monthlyBudget > 0 else { return "未设置" }
+        let rate = currentMonthSpent / store.budgetState.monthlyBudget
+        return "\(Int((rate * 100).rounded()))%"
+    }
+
+    private var headerMessage: String {
+        if projectedRemaining < 0 {
+            return "本月会超出预算，先看看待购预估和浪费记录。"
+        }
+        if pendingShoppingEstimate > 0 {
+            return "预算仍有余量，待购清单已经计入预计支出。"
+        }
+        if currentMonthSpent == 0 {
+            return "这个月还没有记录支出，可以从补记实付开始。"
+        }
+        return "厨房成本保持在预算内，继续按当前节奏记录。"
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("本月预算")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.secondary)
-                            Text(store.budgetState.monthlyBudget.currencyText)
-                                .font(.title.weight(.bold).monospacedDigit())
-                        }
-                        Spacer()
-                        VStack(alignment: .trailing, spacing: 4) {
-                            Text(projectedRemaining >= 0 ? "预计仍可用" : "预计将超支")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.secondary)
-                            Text(projectedRemaining.currencyText)
-                                .font(.title3.weight(.bold).monospacedDigit())
-                                .foregroundStyle(projectedRemaining >= 0 ? .green : .red)
-                        }
-                    }
-                    .cardStyle()
-                    .padding(.horizontal)
-
-                    HStack(spacing: 10) {
-                        BudgetStatCard(title: "已支出", value: currentMonthSpent.currencyText, tint: KitchenTheme.surface)
-                        BudgetStatCard(title: "待购预估", value: pendingShoppingEstimate.currencyText, tint: KitchenTheme.greenTint)
-                        BudgetStatCard(title: "浪费", value: currentMonthWaste.currencyText, tint: KitchenTheme.redTint)
-                    }
+                    KitchenPageHeader(
+                        eyebrow: selectedMonthText,
+                        title: projectedRemaining >= 0 ? "预计可用 \(projectedRemaining.currencyText)" : "预计超支 \(abs(projectedRemaining).currencyText)",
+                        message: headerMessage,
+                        symbol: "banknote.fill",
+                        accent: projectedRemaining >= 0 ? KitchenTheme.brandGold : KitchenTheme.danger,
+                        metrics: [
+                            KitchenMetric(title: "预算上限", value: store.budgetState.monthlyBudget.currencyText, symbol: "gauge.with.dots.needle.33percent", accent: KitchenTheme.brandGold),
+                            KitchenMetric(title: "已支出", value: currentMonthSpent.currencyText, symbol: "cart.fill", accent: KitchenTheme.brandGold),
+                            KitchenMetric(title: "使用率", value: budgetUseText, symbol: projectedRemaining >= 0 ? "chart.pie.fill" : "exclamationmark.triangle.fill", accent: projectedRemaining >= 0 ? KitchenTheme.brandGold : KitchenTheme.danger)
+                        ],
+                        actionTitle: "设置预算上限",
+                        actionSymbol: "slider.horizontal.3",
+                        action: { showingBudgetEditor = true }
+                    )
                     .padding(.horizontal)
 
                     VStack(alignment: .leading, spacing: 10) {
@@ -243,8 +257,9 @@ struct BudgetPage: View {
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("设置上限") { showingBudgetEditor = true }
-                        .font(.subheadline)
+                    Button { showingBudgetEditor = true } label: {
+                        Image(systemName: "slider.horizontal.3")
+                    }
                 }
 
                 ToolbarItemGroup(placement: .keyboard) {
@@ -319,9 +334,9 @@ private struct PurchaseRecordRow: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "basket.fill")
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(KitchenTheme.brandCrimson)
                     .frame(width: 34, height: 34)
-                    .background(KitchenTheme.accentTint, in: Circle())
+                    .background(KitchenTheme.brandCrimson.opacity(0.10), in: Circle())
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(record.summaryText)
@@ -406,7 +421,7 @@ private struct WasteRecordRow: View {
             Image(systemName: "trash")
                 .foregroundStyle(.red)
                 .frame(width: 32, height: 32)
-                .background(KitchenTheme.redTint, in: Circle())
+                .background(KitchenTheme.danger.opacity(0.12), in: Circle())
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(record.itemName)

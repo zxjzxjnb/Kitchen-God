@@ -56,10 +56,10 @@ struct MealPlanPage: View {
                                 if !isCurrentWeek {
                                     Button("今天") { showCurrentWeek() }
                                         .font(.caption.weight(.semibold))
-                                        .foregroundStyle(Color.accentColor)
+                                        .foregroundStyle(KitchenTheme.brandCrimson)
                                         .padding(.horizontal, 10)
                                         .padding(.vertical, 5)
-                                        .background(KitchenTheme.accentTint, in: Capsule())
+                                        .background(KitchenTheme.brandCrimson.opacity(0.08), in: Capsule())
                                 }
 
                                 Button { moveWeek(by: -7) } label: {
@@ -123,10 +123,10 @@ struct MealPlanPage: View {
                                 if focusedMealCount > 0 {
                                     Text("\(focusedMealCount)/\(MealSlot.allCases.count) 项已安排")
                                         .font(.caption.weight(.semibold))
-                                        .foregroundStyle(Color.accentColor)
+                                        .foregroundStyle(KitchenTheme.brandCrimson)
                                         .padding(.horizontal, 9)
                                         .padding(.vertical, 4)
-                                        .background(KitchenTheme.accentTint, in: Capsule())
+                                        .background(KitchenTheme.brandCrimson.opacity(0.08), in: Capsule())
                                 }
                             }
 
@@ -145,7 +145,7 @@ struct MealPlanPage: View {
                                         },
                                         onComplete: {
                                             store.completeMeal(dateKey: focusedDateKey, slot: slot)
-                                            store.showToast("\(slot.title) 已完成")
+                                            store.showToast("好,这顿\(slot.title)吃完了。", kind: .success)
                                         }
                                     )
                                 }
@@ -160,6 +160,11 @@ struct MealPlanPage: View {
             }
             .background(KitchenTheme.background)
             .navigationTitle("菜单")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    KitchenBrandMark()
+                }
+            }
             .onAppear { syncFocusedDateIfNeeded() }
             .sheet(item: $editingCell) { cell in
                 MealEditSheet(
@@ -228,34 +233,50 @@ private struct WeekDayPill: View {
             VStack(spacing: 5) {
                 Text(weekdayLetter)
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(isSelected ? Color.white : KitchenTheme.textSecondary)
 
                 Text(dayNumber)
                     .font(.system(size: 18, weight: isSelected || isToday ? .bold : .regular, design: .rounded))
-                    .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+                    .foregroundStyle(isSelected ? Color.white : KitchenTheme.textPrimary)
 
                 Circle()
-                    .fill(
-                        mealCount > 0
-                        ? (isSelected ? Color.accentColor : Color.secondary.opacity(0.38))
-                        : Color.clear
-                    )
+                    .fill(dotColor)
                     .frame(width: 5, height: 5)
             }
             .frame(width: 44, height: 64)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(
-                        isSelected ? Color.accentColor.opacity(0.12)
-                        : (isToday ? Color.accentColor.opacity(0.06) : Color.clear)
-                    )
+                RoundedRectangle(cornerRadius: KitchenTheme.Radius.md, style: .continuous)
+                    .fill(backgroundColor)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(isSelected ? Color.accentColor.opacity(0.28) : Color.clear, lineWidth: 1.2)
+                RoundedRectangle(cornerRadius: KitchenTheme.Radius.md, style: .continuous)
+                    .stroke(borderColor, lineWidth: borderWidth)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(KitchenPressStyle())
+    }
+
+    private var dotColor: Color {
+        guard mealCount > 0 else { return .clear }
+        if isSelected { return KitchenTheme.brandGold }
+        if isToday    { return KitchenTheme.brandGold.opacity(0.85) }
+        return KitchenTheme.textSecondary.opacity(0.45)
+    }
+
+    private var backgroundColor: Color {
+        if isSelected { return KitchenTheme.brandCrimson }
+        if isToday    { return KitchenTheme.brandGold.opacity(0.10) }
+        return .clear
+    }
+
+    private var borderColor: Color {
+        if isSelected { return KitchenTheme.brandGold.opacity(0.40) }
+        if isToday    { return KitchenTheme.brandGold.opacity(0.45) }
+        return .clear
+    }
+
+    private var borderWidth: CGFloat {
+        (isSelected || isToday) ? 1 : 0
     }
 }
 
@@ -283,105 +304,61 @@ struct AIChefPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // ── Compact header band ───────────────────────────────────
-            ZStack(alignment: .leading) {
-                // Background gradient
-                LinearGradient(
-                    stops: [
-                        .init(color: Color(red: 0.25, green: 0.06, blue: 0.03), location: 0.0),
-                        .init(color: Color(red: 0.52, green: 0.13, blue: 0.05), location: 1.0),
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-
-                // Subtle glow behind avatar
-                Circle()
-                    .fill(KitchenTheme.zaoSun.opacity(0.30))
-                    .frame(width: 80)
-                    .blur(radius: 28)
-                    .offset(x: 12, y: 4)
-
-                HStack(spacing: 12) {
-                    // Avatar
-                    Image("ZaoWangyeHero")
-                        .resizable()
-                        .interpolation(.high)
-                        .scaledToFill()
-                        .frame(width: 52, height: 52)
-                        .clipShape(Circle())
-                        .overlay(
-                            Circle().strokeBorder(
-                                LinearGradient(
-                                    colors: [KitchenTheme.zaoGold.opacity(0.85), .white.opacity(0.20)],
-                                    startPoint: .topLeading, endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 1.5
-                            )
-                        )
-                        .shadow(color: KitchenTheme.zaoGold.opacity(0.35), radius: 10, y: 3)
-
-                    // Title
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(mode == .suggest ? "库存优先" : "手动点菜")
-                            .font(.caption2.weight(.semibold))
-                            .kerning(0.5)
-                            .foregroundStyle(KitchenTheme.zaoGold.opacity(0.85))
-                        Text("灶王爷")
-                            .font(.title3.weight(.bold))
-                            .foregroundStyle(.white)
-                    }
-
-                    Spacer(minLength: 8)
-
-                    // Mode toggle inline in header
-                    AIChefModeSwitch(selection: $mode)
-                        .frame(maxWidth: 148)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
-            }
-            .frame(height: 80)
-
-            // Gold divider line
-            Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: [KitchenTheme.zaoGold.opacity(0.55), KitchenTheme.zaoGold.opacity(0.05)],
-                        startPoint: .leading, endPoint: .trailing
+            // Header strip — cream paper with brand mark + mode toggle
+            HStack(spacing: KitchenTheme.Spacing.md) {
+                Image("ZaoWangyeHero")
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFill()
+                    .frame(width: 48, height: 48)
+                    .clipShape(Circle())
+                    .overlay(
+                        Circle().strokeBorder(KitchenTheme.brandGold.opacity(0.85), lineWidth: 1.5)
                     )
-                )
-                .frame(height: 1)
 
-            // ── Content area ─────────────────────────────────────────
-            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(mode == .suggest ? "库存优先" : "手动点菜")
+                        .font(KitchenType.eyebrow)
+                        .kerning(0.5)
+                        .foregroundStyle(KitchenTheme.brandCrimson)
+                    Text("灶王爷")
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(KitchenTheme.textPrimary)
+                }
+
+                Spacer(minLength: KitchenTheme.Spacing.sm)
+
+                AIChefModeSwitch(selection: $mode)
+                    .frame(maxWidth: 148)
+            }
+            .padding(.horizontal, KitchenTheme.Spacing.lg)
+            .padding(.vertical, KitchenTheme.Spacing.md + 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(KitchenTheme.brandCream)
+
+            // Subtle divider
+            Rectangle()
+                .fill(KitchenTheme.brandGold.opacity(0.30))
+                .frame(height: 0.5)
+
+            // Content area on neutral surface
+            VStack(alignment: .leading, spacing: KitchenTheme.Spacing.md) {
                 if mode == .input {
                     inputModeContent
                 } else {
                     suggestModeContent
                 }
             }
-            .padding(16)
+            .padding(KitchenTheme.Spacing.lg)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(red: 0.12, green: 0.05, blue: 0.03))
+            .background(KitchenTheme.surfaceElevated)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: KitchenTheme.Radius.lg + 2, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(
-                    LinearGradient(
-                        stops: [
-                            .init(color: KitchenTheme.zaoGold.opacity(0.70), location: 0.0),
-                            .init(color: .white.opacity(0.08), location: 0.50),
-                            .init(color: KitchenTheme.zaoGold.opacity(0.20), location: 1.0),
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 0.9
-                )
+            RoundedRectangle(cornerRadius: KitchenTheme.Radius.lg + 2, style: .continuous)
+                .strokeBorder(KitchenTheme.brandGold.opacity(0.30), lineWidth: 1)
         )
-        .shadow(color: Color(red: 0.40, green: 0.08, blue: 0.02).opacity(0.55), radius: 20, y: 10)
+        .kitchenShadow()
         .onAppear { loadInitialSuggestionsIfNeeded() }
         .onChange(of: mode) { _, newMode in handleModeChange(newMode) }
     }
@@ -392,7 +369,9 @@ struct AIChefPanel: View {
             LoadingRow(text: "处理中…")
         }
         if !errorMessage.isEmpty {
-            Text(errorMessage).font(.caption).foregroundStyle(.red)
+            Text(errorMessage)
+                .font(.caption)
+                .foregroundStyle(KitchenTheme.danger)
         }
     }
 
@@ -400,7 +379,6 @@ struct AIChefPanel: View {
     private var inputModeContent: some View {
         TextField("输入菜名", text: $dishName)
             .textFieldStyle(.roundedBorder)
-            .colorScheme(.dark)
 
         FilledButton(title: isLoading ? "查询中…" : "查菜谱") {
             fetchRecipe()
@@ -435,9 +413,9 @@ struct AIChefPanel: View {
                 } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.72))
+                        .foregroundStyle(KitchenTheme.textSecondary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(KitchenPressStyle())
             }
         }
 
@@ -514,18 +492,18 @@ struct AIChefPanel: View {
         let title = dish.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return }
         store.assignMeal(title, dateKey: planDate, slot: planMeal)
-        store.showToast("已安排「\(title)」")
+        store.showToast("「\(title)」我记上了。", kind: .success)
     }
 
     private func addMissingIngredients(_ ingredients: [RecipeIngredient]) {
         let shoppingDay = store.preferredShoppingDay(for: planDate)
         let summary = store.syncMissingIngredientsToShoppingList(ingredients, preferredDay: shoppingDay)
         guard !summary.isEmpty else {
-            store.showToast("食材全部备齐，无需购买")
+            store.showToast("食材都齐了,不用买。", kind: .success)
             return
         }
         let itemsText = summary.affectedNames.joined(separator: "、")
-        store.showToast("已加入待购：\(itemsText)")
+        store.showToast("加进清单了：\(itemsText)。", kind: .success)
     }
 
     private func autoArrangeMeal(_ dish: String, ingredients: [RecipeIngredient]) {
@@ -535,9 +513,9 @@ struct AIChefPanel: View {
         let shoppingDay = store.preferredShoppingDay(for: planDate)
         let summary = store.syncMissingIngredientsToShoppingList(ingredients, preferredDay: shoppingDay)
         if summary.isEmpty {
-            store.showToast("已安排「\(title)」")
+            store.showToast("「\(title)」我记上了。", kind: .success)
         } else {
-            store.showToast("已安排并补货 \(summary.affectedNames.count) 项")
+            store.showToast("「\(title)」我记上了,顺手补了 \(summary.affectedNames.count) 项。", kind: .success)
         }
     }
 
@@ -562,23 +540,26 @@ struct RecipeResultCard: View {
     private var missingCount: Int { result.missingIngredients.count }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KitchenTheme.Spacing.md) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(result.dish)
                         .font(.headline)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(KitchenTheme.textPrimary)
                     Text(result.tips)
                         .font(.caption)
-                        .foregroundStyle(KitchenTheme.zaoCream.opacity(0.78))
+                        .foregroundStyle(KitchenTheme.textSecondary)
                 }
                 Spacer()
                 Text(missingCount == 0 ? "可直接做" : "缺 \(missingCount) 样")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(missingCount == 0 ? KitchenTheme.zaoMint : KitchenTheme.zaoGold)
+                    .foregroundStyle(missingCount == 0 ? KitchenTheme.success : KitchenTheme.brandCrimson)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background((missingCount == 0 ? KitchenTheme.zaoMint : KitchenTheme.zaoGold).opacity(0.16), in: Capsule())
+                    .background(
+                        (missingCount == 0 ? KitchenTheme.success : KitchenTheme.brandCrimson).opacity(0.12),
+                        in: Capsule()
+                    )
             }
 
             ForEach(result.ingredients) { ingredient in
@@ -595,8 +576,15 @@ struct RecipeResultCard: View {
                 SecondaryButton(title: "只安排", symbol: "calendar.badge.plus") { onAssign() }
             }
         }
-        .padding(14)
-        .zaoWangyeSurface(selected: true)
+        .padding(KitchenTheme.Spacing.md + 2)
+        .background(
+            KitchenTheme.brandCream.opacity(0.45),
+            in: RoundedRectangle(cornerRadius: KitchenTheme.Radius.md + 2, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: KitchenTheme.Radius.md + 2, style: .continuous)
+                .strokeBorder(KitchenTheme.brandGold.opacity(0.35), lineWidth: 1)
+        )
     }
 }
 
@@ -609,7 +597,14 @@ private struct AIChefModeSwitch: View {
             modeButton(.input, label: "点菜")
         }
         .padding(4)
-        .background(.black.opacity(0.22), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(
+            KitchenTheme.surfaceElevated,
+            in: RoundedRectangle(cornerRadius: KitchenTheme.Radius.md, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: KitchenTheme.Radius.md, style: .continuous)
+                .strokeBorder(KitchenTheme.separator.opacity(0.5), lineWidth: 0.5)
+        )
     }
 
     @ViewBuilder
@@ -624,12 +619,15 @@ private struct AIChefModeSwitch: View {
                 Text(label)
                     .font(.subheadline.weight(.semibold))
             }
-            .foregroundStyle(isSelected ? KitchenTheme.zaoCrimson : .white.opacity(0.72))
+            .foregroundStyle(isSelected ? Color.white : KitchenTheme.textSecondary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
-            .background(isSelected ? KitchenTheme.zaoGold : .clear, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .background(
+                isSelected ? KitchenTheme.brandCrimson : .clear,
+                in: RoundedRectangle(cornerRadius: KitchenTheme.Radius.sm, style: .continuous)
+            )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(KitchenPressStyle())
         .animation(.easeInOut(duration: 0.15), value: isSelected)
     }
 }
@@ -646,18 +644,18 @@ private struct SuggestionOverviewPanel: View {
             HStack(spacing: 6) {
                 Image(systemName: "sparkles")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(KitchenTheme.zaoGold)
+                    .foregroundStyle(KitchenTheme.brandCrimson)
                 Text("\(suggestions.count) 道推荐")
-                    .foregroundStyle(KitchenTheme.zaoGold)
+                    .foregroundStyle(KitchenTheme.textPrimary)
                 Text("·")
-                    .foregroundStyle(.white.opacity(0.35))
+                    .foregroundStyle(KitchenTheme.textTertiary)
                 Text("\(readyCount) 可直接做")
-                    .foregroundStyle(KitchenTheme.zaoMint)
+                    .foregroundStyle(KitchenTheme.success)
                 if missingCount > 0 {
                     Text("·")
-                        .foregroundStyle(.white.opacity(0.35))
+                        .foregroundStyle(KitchenTheme.textTertiary)
                     Text("\(missingCount) 需补货")
-                        .foregroundStyle(KitchenTheme.zaoAmber)
+                        .foregroundStyle(KitchenTheme.warning)
                 }
                 Spacer(minLength: 0)
             }
@@ -681,71 +679,65 @@ struct SuggestionCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // ── Always-visible summary row ──────────────────────────────
-            HStack(spacing: 10) {
-                // Rank badge
+            // Summary row
+            HStack(spacing: KitchenTheme.Spacing.sm + 2) {
                 Text("\(rank)")
                     .font(.caption.weight(.black).monospacedDigit())
-                    .foregroundStyle(isSelected ? KitchenTheme.zaoCrimson : .white)
+                    .foregroundStyle(isSelected ? Color.white : KitchenTheme.brandCrimson)
                     .frame(width: 26, height: 26)
                     .background(
-                        isSelected ? KitchenTheme.zaoGold : .white.opacity(0.16),
+                        isSelected ? KitchenTheme.brandCrimson : KitchenTheme.brandCrimson.opacity(0.10),
                         in: Circle()
                     )
 
-                // Dish info
                 VStack(alignment: .leading, spacing: 3) {
                     Text(suggestion.dish)
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(KitchenTheme.textPrimary)
                     Text(suggestion.reason)
                         .font(.caption)
-                        .foregroundStyle(KitchenTheme.zaoCream.opacity(0.78))
+                        .foregroundStyle(KitchenTheme.textSecondary)
                         .lineLimit(1)
                 }
 
                 Spacer(minLength: 6)
 
-                // Status badge
                 Text(suggestion.canCookNow ? "现成" : "缺\(suggestion.missingIngredients.count)样")
                     .font(.caption2.weight(.bold))
-                    .foregroundStyle(suggestion.canCookNow ? KitchenTheme.zaoMint : KitchenTheme.zaoGold)
+                    .foregroundStyle(suggestion.canCookNow ? KitchenTheme.success : KitchenTheme.warning)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
                     .background(
-                        (suggestion.canCookNow ? KitchenTheme.zaoMint : KitchenTheme.zaoGold).opacity(0.16),
+                        (suggestion.canCookNow ? KitchenTheme.success : KitchenTheme.warning).opacity(0.12),
                         in: Capsule()
                     )
 
-                // Chevron
                 Image(systemName: "chevron.down")
                     .font(.caption2.weight(.bold))
-                    .foregroundStyle(.white.opacity(0.40))
+                    .foregroundStyle(KitchenTheme.textTertiary)
                     .rotationEffect(.degrees(isSelected ? -180 : 0))
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, KitchenTheme.Spacing.md)
             .padding(.vertical, 11)
 
-            // ── Expanded detail + actions ──────────────────────────────
+            // Expanded detail
             if isSelected {
                 Rectangle()
-                    .fill(.white.opacity(0.10))
-                    .frame(height: 1)
-                    .padding(.horizontal, 12)
+                    .fill(KitchenTheme.separator.opacity(0.6))
+                    .frame(height: 0.5)
+                    .padding(.horizontal, KitchenTheme.Spacing.md)
 
                 VStack(alignment: .leading, spacing: 11) {
-                    // Readiness label
                     if suggestion.canCookNow {
                         Label("食材全部备齐，可直接下锅。", systemImage: "checkmark.circle.fill")
                             .font(.caption.weight(.medium))
-                            .foregroundStyle(KitchenTheme.zaoMint)
+                            .foregroundStyle(KitchenTheme.success)
                     } else {
                         Label("还缺 \(suggestion.missingIngredients.count) 样食材。", systemImage: "exclamationmark.circle")
                             .font(.caption.weight(.medium))
-                            .foregroundStyle(KitchenTheme.zaoCream.opacity(0.82))
+                            .foregroundStyle(KitchenTheme.textSecondary)
                     }
 
-                    // Missing ingredient chips
                     if !suggestion.missingIngredients.isEmpty {
                         FlowLayout(spacing: 5) {
                             ForEach(suggestion.missingIngredients) { ingredient in
@@ -755,19 +747,16 @@ struct SuggestionCard: View {
                                     Text("\(ingredient.name) \(ingredient.purchaseQuantityText)\(ingredient.unit)")
                                         .font(.caption2.weight(.semibold))
                                 }
-                                .foregroundStyle(KitchenTheme.zaoCream.opacity(0.88))
+                                .foregroundStyle(KitchenTheme.brandCrimson)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
-                                .background(.white.opacity(0.12), in: Capsule())
-                                .overlay(Capsule().strokeBorder(.white.opacity(0.10), lineWidth: 0.8))
+                                .background(KitchenTheme.brandCrimson.opacity(0.08), in: Capsule())
                             }
                         }
                     }
 
-                    // Plan selector
                     PlanSelector(planDate: $planDate, planMeal: $planMeal, weekDates: weekDates)
 
-                    // Action buttons
                     if suggestion.canCookNow {
                         FilledButton(title: "安排到菜单") { onAssign() }
                     } else {
@@ -776,20 +765,20 @@ struct SuggestionCard: View {
                         SecondaryButton(title: "只安排", symbol: "calendar.badge.plus") { onAssign() }
                     }
                 }
-                .padding(.horizontal, 12)
+                .padding(.horizontal, KitchenTheme.Spacing.md)
                 .padding(.top, 11)
                 .padding(.bottom, 13)
             }
         }
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(isSelected ? .white.opacity(0.15) : .black.opacity(0.20))
+            RoundedRectangle(cornerRadius: KitchenTheme.Radius.md + 2, style: .continuous)
+                .fill(isSelected ? KitchenTheme.brandCream.opacity(0.45) : KitchenTheme.surface)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: KitchenTheme.Radius.md + 2, style: .continuous)
                 .strokeBorder(
-                    isSelected ? KitchenTheme.zaoGold.opacity(0.82) : .white.opacity(0.09),
-                    lineWidth: isSelected ? 1.5 : 1
+                    isSelected ? KitchenTheme.brandGold.opacity(0.50) : KitchenTheme.separator.opacity(0.5),
+                    lineWidth: isSelected ? 1.2 : 0.5
                 )
         )
     }
@@ -813,63 +802,67 @@ private struct CompactMealSlotRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
-                // Icon — larger, fills with green when done
+            HStack(spacing: KitchenTheme.Spacing.md) {
                 Image(systemName: isDone ? "checkmark.circle.fill" : slot.symbolName)
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(isDone ? .white : Color.accentColor)
+                    .foregroundStyle(isDone ? Color.white : KitchenTheme.brandCrimson)
                     .frame(width: 36, height: 36)
                     .background(
-                        isDone ? Color.green : KitchenTheme.accentTint,
-                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        isDone ? KitchenTheme.brandGold : KitchenTheme.brandCrimson.opacity(0.10),
+                        in: RoundedRectangle(cornerRadius: KitchenTheme.Radius.sm, style: .continuous)
                     )
 
-                // Labels
                 VStack(alignment: .leading, spacing: 2) {
                     Text(slot.title)
                         .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(KitchenTheme.textSecondary)
                     if hasValue {
                         Text(displayValue)
                             .font(.subheadline.weight(.medium))
-                            .foregroundStyle(isDone ? Color.secondary : Color.primary)
-                            .strikethrough(isDone, color: Color.secondary)
+                            .foregroundStyle(isDone ? KitchenTheme.textSecondary : KitchenTheme.textPrimary)
+                            .strikethrough(isDone, color: KitchenTheme.textSecondary)
                             .lineLimit(1)
                     } else {
                         Text("点击添加")
                             .font(.subheadline)
-                            .foregroundStyle(Color(.tertiaryLabel))
+                            .foregroundStyle(KitchenTheme.textTertiary)
                     }
                 }
 
                 Spacer()
 
-                // Right-side actions
-                HStack(spacing: 10) {
+                HStack(spacing: KitchenTheme.Spacing.sm + 2) {
                     if isToday && hasValue && !isDone {
                         Button {
                             onComplete?()
                         } label: {
                             Image(systemName: "checkmark.circle")
                                 .font(.title3)
-                                .foregroundStyle(Color.green)
+                                .foregroundStyle(KitchenTheme.brandGold)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(KitchenPressStyle())
                     }
 
                     Image(systemName: hasValue ? "chevron.right" : "plus")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color(.tertiaryLabel))
+                        .foregroundStyle(KitchenTheme.textTertiary)
                 }
             }
             .padding(.vertical, 10)
-            .padding(.horizontal, 12)
+            .padding(.horizontal, KitchenTheme.Spacing.md)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(isDone ? KitchenTheme.greenTint : Color(.tertiarySystemFill))
+                RoundedRectangle(cornerRadius: KitchenTheme.Radius.md, style: .continuous)
+                    .fill(isDone ? KitchenTheme.brandGold.opacity(0.10) : KitchenTheme.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: KitchenTheme.Radius.md, style: .continuous)
+                    .strokeBorder(
+                        isDone ? KitchenTheme.brandGold.opacity(0.30) : Color.clear,
+                        lineWidth: isDone ? 1 : 0
+                    )
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(KitchenPressStyle())
     }
 }
 
@@ -879,33 +872,36 @@ private struct RecipeIngredientRow: View {
     let ingredient: RecipeIngredient
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: KitchenTheme.Spacing.sm + 2) {
             Image(systemName: ingredient.needToBuy ? "cart.badge.plus" : "checkmark.circle.fill")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(ingredient.needToBuy ? KitchenTheme.zaoGold : KitchenTheme.zaoMint)
+                .foregroundStyle(ingredient.needToBuy ? KitchenTheme.brandCrimson : KitchenTheme.success)
                 .frame(width: 20, height: 20)
 
             Text(ingredient.name)
                 .font(.subheadline.weight(.medium))
-                .foregroundStyle(.white)
+                .foregroundStyle(KitchenTheme.textPrimary)
 
             Spacer()
 
             VStack(alignment: .trailing, spacing: 1) {
                 Text(ingredient.needToBuy ? "待购 \(ingredient.purchaseQuantityText)\(ingredient.unit)" : "已备")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(ingredient.needToBuy ? KitchenTheme.zaoGold : KitchenTheme.zaoMint)
+                    .foregroundStyle(ingredient.needToBuy ? KitchenTheme.brandCrimson : KitchenTheme.success)
                 Text("需 \(ingredient.quantity.cleanString)\(ingredient.unit)")
                     .font(.caption2)
-                    .foregroundStyle(KitchenTheme.zaoCream.opacity(0.55))
+                    .foregroundStyle(KitchenTheme.textTertiary)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.horizontal, KitchenTheme.Spacing.sm + 2)
+        .padding(.vertical, KitchenTheme.Spacing.sm)
+        .background(
+            KitchenTheme.surface,
+            in: RoundedRectangle(cornerRadius: KitchenTheme.Radius.sm, style: .continuous)
+        )
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+            RoundedRectangle(cornerRadius: KitchenTheme.Radius.sm, style: .continuous)
+                .strokeBorder(KitchenTheme.separator.opacity(0.5), lineWidth: 0.5)
         )
     }
 }
@@ -942,9 +938,9 @@ struct MealEditSheet: View {
             HStack(spacing: 14) {
                 Image(systemName: state.mealSlot.symbolName)
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(KitchenTheme.brandCrimson)
                     .frame(width: 42, height: 42)
-                    .background(KitchenTheme.accentTint, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .background(KitchenTheme.brandCrimson.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(state.mealSlot.title)

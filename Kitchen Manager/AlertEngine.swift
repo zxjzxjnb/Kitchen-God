@@ -42,30 +42,30 @@ enum AlertEngine {
     static func status(for item: InventoryItem) -> InventoryStatusInfo? {
         if let expiry = item.expiryDate, let days = daysUntil(dateKey: expiry) {
             if days < 0 {
-                return InventoryStatusInfo(text: "已过期 \(-days) 天", color: KitchenTheme.red, level: .danger)
+                return InventoryStatusInfo(text: "已过期 \(-days) 天", color: KitchenTheme.danger, level: .danger)
             }
             if days == 0 {
-                return InventoryStatusInfo(text: "今天到期", color: KitchenTheme.red, level: .danger)
+                return InventoryStatusInfo(text: "今天到期", color: KitchenTheme.danger, level: .danger)
             }
             if days <= 3 {
-                return InventoryStatusInfo(text: "临期，还剩 \(days) 天", color: KitchenTheme.warn, level: .warning)
+                return InventoryStatusInfo(text: "临期，还剩 \(days) 天", color: KitchenTheme.warning, level: .warning)
             }
-            return InventoryStatusInfo(text: "到期 \(expiry)", color: KitchenTheme.subtleText, level: .normal)
+            return InventoryStatusInfo(text: "到期 \(expiry)", color: KitchenTheme.textSecondary, level: .normal)
         }
 
         if item.freshnessDays > 0, let addedDate = DateHelper.date(from: item.addedDate) {
             let usedDays = Calendar.current.dateComponents([.day], from: addedDate, to: Date()).day ?? 0
             let left = item.freshnessDays - usedDays
             if left <= 0 {
-                return InventoryStatusInfo(text: "不新鲜", color: KitchenTheme.red, level: .danger)
+                return InventoryStatusInfo(text: "不新鲜", color: KitchenTheme.danger, level: .danger)
             }
             if left <= 2 {
-                return InventoryStatusInfo(text: "新鲜期临期，还剩 \(left) 天", color: KitchenTheme.warn, level: .warning)
+                return InventoryStatusInfo(text: "新鲜期临期，还剩 \(left) 天", color: KitchenTheme.warning, level: .warning)
             }
         }
 
         if let threshold = item.threshold, let quantity = Double(item.quantity), quantity <= threshold {
-            return InventoryStatusInfo(text: "库存不足", color: KitchenTheme.warn, level: .warning)
+            return InventoryStatusInfo(text: "库存不足", color: KitchenTheme.warning, level: .warning)
         }
 
         return nil

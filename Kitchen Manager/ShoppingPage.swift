@@ -50,36 +50,48 @@ struct ShoppingPage: View {
         return resolvedDays.first(where: { $0 >= today }) ?? resolvedDays.first ?? ""
     }
 
+    private var nearestShopDayText: String {
+        guard !nearestShopDay.isEmpty else { return "未设定" }
+        if nearestShopDay == DateHelper.todayKey { return "今天" }
+        guard let date = DateHelper.date(from: nearestShopDay) else { return nearestShopDay }
+        return "\(DateHelper.weekdayName(for: date)) \(DateHelper.monthDayString(date))"
+    }
+
+    private var headerMessage: String {
+        if pendingItems.isEmpty {
+            return completedCount > 0 ? "采购清单已经处理完，可以直接结算入库。" : "采购清单已经清爽，暂时不用额外补货。"
+        }
+        if projectedBudgetRemaining < 0 {
+            return "这批采购会让预算超出，优先删减非必要项。"
+        }
+        if resolvedDays.isEmpty {
+            return "先选一个购物日，清单就能按日期分组处理。"
+        }
+        if nearestShopDay == DateHelper.todayKey {
+            return "今天适合把清单带出门，未分配项目可以一键归到最近购物日。"
+        }
+        return "清单和预算都在可控范围，按购物日分批处理就好。"
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 14) {
-                    // Summary
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("待采购预估")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.secondary)
-                            Text(pendingEstimatedTotal.currencyText)
-                                .font(.title.weight(.bold).monospacedDigit())
-                            Text("\(pendingItems.count) 项")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        VStack(alignment: .trailing, spacing: 4) {
-                            Text("预算余量")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.secondary)
-                            Text(projectedBudgetRemaining.currencyText)
-                                .font(.title3.weight(.bold).monospacedDigit())
-                                .foregroundStyle(projectedBudgetRemaining >= 0 ? .green : .red)
-                            Text(projectedBudgetRemaining >= 0 ? "预算内" : "将超预算")
-                                .font(.caption)
-                                .foregroundStyle(projectedBudgetRemaining >= 0 ? .green : .red)
-                        }
-                    }
-                    .cardStyle()
+                    KitchenPageHeader(
+                        eyebrow: "采购节奏",
+                        title: pendingItems.isEmpty ? "清单已清爽" : "\(pendingItems.count) 项待采购",
+                        message: headerMessage,
+                        symbol: "cart.fill",
+                        accent: projectedBudgetRemaining < 0 ? KitchenTheme.danger : KitchenTheme.brandGold,
+                        metrics: [
+                            KitchenMetric(title: "待购预估", value: pendingEstimatedTotal.currencyText, symbol: "eurosign.circle.fill", accent: KitchenTheme.brandGold),
+                            KitchenMetric(title: "预算余量", value: projectedBudgetRemaining.currencyText, symbol: projectedBudgetRemaining >= 0 ? "checkmark.seal.fill" : "exclamationmark.triangle.fill", accent: projectedBudgetRemaining >= 0 ? KitchenTheme.brandGold : KitchenTheme.danger),
+                            KitchenMetric(title: "下次购物", value: nearestShopDayText, symbol: "calendar.badge.clock", accent: KitchenTheme.brandGold)
+                        ],
+                        actionTitle: "添加采购项",
+                        actionSymbol: "plus.circle.fill",
+                        action: { showingAddForm = true }
+                    )
                     .padding(.horizontal)
 
                     // Shopping days
@@ -107,7 +119,7 @@ struct ShoppingPage: View {
                                     badgeCount: pendingCount(for: dateKey),
                                     isSelected: isSelected,
                                     isToday: dateKey == DateHelper.todayKey,
-                                    accent: .green,
+                                    accent: KitchenTheme.brandGold,
                                     minHeight: 44
                                 ) {
                                     toggleShoppingDay(dateKey)
@@ -119,26 +131,33 @@ struct ShoppingPage: View {
                     .padding(.horizontal)
 
                     // Category filter
-                    HStack(alignment: .center, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text("分类筛选")
+                                .font(.headline)
+                            Spacer()
+                            Text("\(filteredItems.count) 项")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 6) {
                                 ForEach(["全部"] + KitchenData.categories, id: \.self) { category in
-                                    Button {
+                                    KitchenChip(
+                                        title: category,
+                                        style: selectedCategory == category ? .filled : .tinted,
+                                        color: KitchenTheme.brandCrimson,
+                                        isSelected: selectedCategory == category
+                                    ) {
                                         selectedCategory = category
-                                    } label: {
-                                        Text(category)
-                                            .font(.caption.weight(.semibold))
-                                            .foregroundStyle(selectedCategory == category ? .white : .primary)
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 6)
-                                            .background(selectedCategory == category ? Color.accentColor : Color(.tertiarySystemFill), in: Capsule())
                                     }
-                                    .buttonStyle(.plain)
                                 }
                             }
                         }
                         .frame(minHeight: 0)
                     }
+                    .cardStyle()
                     .padding(.horizontal)
 
                     // Item list
@@ -229,6 +248,9 @@ struct ShoppingPage: View {
             .navigationTitle("购物清单")
             .animation(.snappy(duration: 0.22), value: completedCount)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    KitchenBrandMark()
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showingAddForm = true } label: {
                         Image(systemName: "plus")
@@ -329,7 +351,7 @@ struct ShoppingPage: View {
         form.name = ""
         form.quantity = ""
         form.estimatedUnitPrice = ""
-        store.showToast("已添加 \(trimmed)")
+        store.showToast("\(trimmed),加进清单了。", kind: .success)
         showingAddForm = false
     }
 
@@ -440,7 +462,7 @@ struct CheckoutSheet: View {
 
                     Button("确认结算") {
                         store.checkoutShoppingTrip(lineItems: lineItems)
-                        store.showToast("已入库 \(lineItems.count) 项，支出 \(total.currencyText)")
+                        store.showToast("搞定,\(lineItems.count) 项进库,共支出 \(total.currencyText)。", kind: .success)
                         dismiss()
                     }
                     .fontWeight(.semibold)

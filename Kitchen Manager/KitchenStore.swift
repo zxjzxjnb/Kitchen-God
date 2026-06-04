@@ -17,6 +17,10 @@ final class KitchenStore {
     var budgetState: BudgetState = BudgetState() {
         didSet { scheduleSave() }
     }
+
+    var hydrationState: HydrationState = HydrationState() {
+        didSet { scheduleSave() }
+    }
     
     var aiApiKey: String = "" {
         didSet { scheduleSave() }
@@ -31,6 +35,7 @@ final class KitchenStore {
     }
     
     var toastMessage: String?
+    var toastKind: ToastKind = .info
 
     // 提醒相关计算属性
     var alerts: AlertBundle {
@@ -67,6 +72,14 @@ final class KitchenStore {
         budgetState.monthlyBudget - currentMonthSpent - pendingShoppingEstimate
     }
 
+    var todayHydrationAmountML: Int {
+        hydrationState.totalAmount(on: DateHelper.todayKey)
+    }
+
+    var dailyWaterGoalML: Int {
+        hydrationState.dailyGoalML
+    }
+
     private var saveTask: Task<Void, Never>?
     private let fileURL: URL
 
@@ -84,9 +97,10 @@ final class KitchenStore {
         load()
     }
     
-    func showToast(_ message: String) {
+    func showToast(_ message: String, kind: ToastKind = .info) {
         withAnimation {
             toastMessage = message
+            toastKind = kind
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.6) {
@@ -104,6 +118,21 @@ final class KitchenStore {
         var day = mealPlans[dateKey] ?? [:]
         day[slot] = title
         mealPlans[dateKey] = day
+    }
+
+    func addHydration(amountML: Int = 250, drinkName: String = "水", dateKey: String = DateHelper.todayKey) {
+        guard amountML > 0 else { return }
+
+        var state = hydrationState
+        state.entries.append(
+            HydrationEntry(
+                dateKey: dateKey,
+                drinkName: drinkName,
+                amountML: amountML
+            )
+        )
+        hydrationState = state
+        showToast("已记录 \(amountML)ml \(drinkName)", kind: .success)
     }
 
     func preferredShoppingDay(for mealDate: String) -> String {
@@ -300,6 +329,7 @@ final class KitchenStore {
             shoppingState: shoppingState,
             mealPlans: mealPlans,
             budgetState: budgetState,
+            hydrationState: hydrationState,
             aiApiKey: aiApiKey,
             aiBaseURL: aiBaseURL,
             aiModel: aiModel
@@ -318,6 +348,7 @@ final class KitchenStore {
             inventoryItems = InventoryItem.samples
             shoppingState = ShoppingState.samples
             budgetState = BudgetState.sample
+            hydrationState = HydrationState.sample
             mealPlans = [
                 DateHelper.todayKey: [
                     .breakfast: "燕麦牛奶杯",
@@ -339,6 +370,7 @@ final class KitchenStore {
             shoppingState = savedData.shoppingState
             mealPlans = savedData.mealPlans
             budgetState = savedData.budgetState
+            hydrationState = savedData.hydrationState ?? HydrationState()
             migratePurchaseTransactionsIfNeeded()
             aiApiKey = savedData.aiApiKey ?? ""
             aiBaseURL = savedData.aiBaseURL ?? "https://api.openai.com/v1"
@@ -565,6 +597,7 @@ final class KitchenStore {
         let shoppingState: ShoppingState
         let mealPlans: [String: [MealSlot: String]]
         let budgetState: BudgetState
+        var hydrationState: HydrationState?
         var aiApiKey: String?
         var aiBaseURL: String?
         var aiModel: String?

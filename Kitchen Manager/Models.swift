@@ -341,6 +341,55 @@ struct WasteRecord: Identifiable, Codable {
     }
 }
 
+struct HydrationEntry: Identifiable, Codable {
+    let id: UUID
+    var dateKey: String
+    var drinkName: String
+    var amountML: Int
+
+    init(id: UUID = UUID(), dateKey: String, drinkName: String, amountML: Int) {
+        self.id = id
+        self.dateKey = dateKey
+        self.drinkName = drinkName
+        self.amountML = amountML
+    }
+}
+
+struct HydrationState: Codable {
+    var dailyGoalML: Int
+    var entries: [HydrationEntry]
+
+    static let sample = HydrationState(
+        dailyGoalML: 2000,
+        entries: [
+            HydrationEntry(dateKey: DateHelper.todayKey, drinkName: "水", amountML: 500),
+            HydrationEntry(dateKey: DateHelper.todayKey, drinkName: "咖啡", amountML: 250),
+            HydrationEntry(dateKey: DateHelper.todayKey, drinkName: "水", amountML: 500)
+        ]
+    )
+
+    init(dailyGoalML: Int = 2000, entries: [HydrationEntry] = []) {
+        self.dailyGoalML = dailyGoalML
+        self.entries = entries
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case dailyGoalML, entries
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        dailyGoalML = try container.decodeIfPresent(Int.self, forKey: .dailyGoalML) ?? 2000
+        entries = try container.decodeIfPresent([HydrationEntry].self, forKey: .entries) ?? []
+    }
+
+    func totalAmount(on dateKey: String) -> Int {
+        entries
+            .filter { $0.dateKey == dateKey }
+            .reduce(0) { $0 + max($1.amountML, 0) }
+    }
+}
+
 struct RecipeIngredient: Identifiable {
     let id = UUID()
     let name: String

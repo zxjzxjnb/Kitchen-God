@@ -1,16 +1,10 @@
 import SwiftUI
 
-extension KitchenTheme {
-    static let zaoCrimson = Color(red: 0.39, green: 0.11, blue: 0.08)
-    static let zaoAmber   = Color(red: 0.96, green: 0.48, blue: 0.08)
-    static let zaoGold    = Color(red: 0.99, green: 0.84, blue: 0.28)
-    static let zaoSun     = Color(red: 1.00, green: 0.68, blue: 0.18)
-    static let zaoCream   = Color(red: 1.00, green: 0.95, blue: 0.82)
-    static let zaoMint    = Color(red: 0.73, green: 0.98, blue: 0.54)
-    static let zaoBlue    = Color(red: 0.52, green: 0.82, blue: 1.00)
-}
-
 // MARK: - Card Shell
+//
+// HomePage's single hero moment. Cream-paper background with brandGold ring
+// frames the artwork — no LinearGradients, no glow ellipses. The 灶王爷 portrait
+// itself is the focal point; the container stays quiet.
 
 struct ZaoWangyeCardShell<Content: View>: View {
     let eyebrow: String
@@ -34,75 +28,46 @@ struct ZaoWangyeCardShell<Content: View>: View {
     }
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            // Background — deep crimson to glowing amber
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(LinearGradient(
-                    stops: [
-                        .init(color: Color(red: 0.33, green: 0.07, blue: 0.03), location: 0.0),
-                        .init(color: Color(red: 0.58, green: 0.13, blue: 0.04), location: 0.55),
-                        .init(color: Color(red: 0.88, green: 0.36, blue: 0.04), location: 1.0),
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ))
+        VStack(alignment: .leading, spacing: KitchenTheme.Spacing.lg) {
+            HStack(alignment: .top, spacing: KitchenTheme.Spacing.md) {
+                VStack(alignment: .leading, spacing: KitchenTheme.Spacing.sm) {
+                    Text(eyebrow)
+                        .font(KitchenType.eyebrow)
+                        .kerning(0.5)
+                        .foregroundStyle(KitchenTheme.brandCrimson)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(KitchenTheme.brandCrimson.opacity(0.08), in: Capsule())
 
-            // Atmosphere
-            ZaoWangyeBackdrop()
-                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    Text(title)
+                        .font(KitchenType.title)
+                        .foregroundStyle(KitchenTheme.textPrimary)
 
-            // Gold shimmer border
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .strokeBorder(
-                    LinearGradient(
-                        stops: [
-                            .init(color: KitchenTheme.zaoGold.opacity(0.95), location: 0.0),
-                            .init(color: .white.opacity(0.45), location: 0.30),
-                            .init(color: KitchenTheme.zaoGold.opacity(0.20), location: 1.0),
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1.2
-                )
-
-            VStack(alignment: .leading, spacing: 16) {
-                // Header
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(eyebrow)
-                            .font(.caption2.weight(.semibold))
-                            .kerning(0.5)
-                            .foregroundStyle(KitchenTheme.zaoCream.opacity(0.78))
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 5)
-                            .background(.black.opacity(0.22), in: Capsule())
-                            .overlay(Capsule().strokeBorder(.white.opacity(0.10), lineWidth: 0.8))
-
-                        Text(title)
-                            .font(.title2.weight(.bold))
-                            .foregroundStyle(.white)
-
-                        if !subtitle.isEmpty {
-                            Text(subtitle)
-                                .font(.subheadline)
-                                .foregroundStyle(KitchenTheme.zaoCream.opacity(0.90))
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+                    if !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(KitchenType.body)
+                            .foregroundStyle(KitchenTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-
-                    Spacer(minLength: 0)
-                    ZaoWangyeArtwork(size: imageSize)
                 }
 
-                content
+                Spacer(minLength: 0)
+                ZaoWangyeArtwork(size: imageSize)
             }
-            .padding(20)
+
+            content
         }
-        .shadow(
-            color: Color(red: 0.50, green: 0.10, blue: 0.03).opacity(0.60),
-            radius: 24, y: 14
+        .padding(KitchenTheme.Spacing.lg + 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            KitchenTheme.brandCream,
+            in: RoundedRectangle(cornerRadius: KitchenTheme.Radius.xl, style: .continuous)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: KitchenTheme.Radius.xl, style: .continuous)
+                .strokeBorder(KitchenTheme.brandGold.opacity(0.45), lineWidth: 1.2)
+        )
+        .kitchenShadow()
     }
 }
 
@@ -116,14 +81,17 @@ struct ZaoWangyeInsetPanel<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KitchenTheme.Spacing.md) {
             content
         }
-        .padding(14)
-        .background(.black.opacity(0.20), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(KitchenTheme.Spacing.md + 2)
+        .background(
+            KitchenTheme.surfaceElevated,
+            in: RoundedRectangle(cornerRadius: KitchenTheme.Radius.lg, style: .continuous)
+        )
         .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+            RoundedRectangle(cornerRadius: KitchenTheme.Radius.lg, style: .continuous)
+                .strokeBorder(KitchenTheme.separator.opacity(0.5), lineWidth: 0.5)
         )
     }
 }
@@ -134,40 +102,43 @@ struct ZaoWangyeStatPill: View {
     let symbol: String
     let title: String
     let value: String
-    var accent: Color = KitchenTheme.zaoGold
+    var accent: Color = KitchenTheme.brandCrimson
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: KitchenTheme.Spacing.sm + 2) {
             Image(systemName: symbol)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(accent)
                 .frame(width: 28, height: 28)
-                .background(.black.opacity(0.16), in: Circle())
+                .background(accent.opacity(0.12), in: Circle())
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.caption2.weight(.medium))
-                    .foregroundStyle(KitchenTheme.zaoCream.opacity(0.86))
+                    .foregroundStyle(KitchenTheme.textSecondary)
                 Text(value)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
+                    .font(KitchenType.body.weight(.semibold))
+                    .foregroundStyle(KitchenTheme.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
 
             Spacer(minLength: 0)
         }
-        .padding(12)
+        .padding(KitchenTheme.Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.black.opacity(0.14), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(
+            KitchenTheme.surfaceElevated,
+            in: RoundedRectangle(cornerRadius: KitchenTheme.Radius.md + 2, style: .continuous)
+        )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+            RoundedRectangle(cornerRadius: KitchenTheme.Radius.md + 2, style: .continuous)
+                .strokeBorder(KitchenTheme.separator.opacity(0.5), lineWidth: 0.5)
         )
     }
 }
 
-// MARK: - Surface Style
+// MARK: - Surface Style (used by MealPlanPage AIChefModeSwitch)
 
 struct ZaoWangyeSurfaceStyle: ViewModifier {
     let selected: Bool
@@ -175,14 +146,14 @@ struct ZaoWangyeSurfaceStyle: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(selected ? .white.opacity(0.16) : .black.opacity(0.20))
+                RoundedRectangle(cornerRadius: KitchenTheme.Radius.md + 2, style: .continuous)
+                    .fill(selected ? KitchenTheme.brandCrimson.opacity(0.10) : KitchenTheme.surfaceElevated)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: KitchenTheme.Radius.md + 2, style: .continuous)
                     .strokeBorder(
-                        selected ? KitchenTheme.zaoGold.opacity(0.82) : .white.opacity(0.09),
-                        lineWidth: selected ? 1.5 : 1
+                        selected ? KitchenTheme.brandCrimson.opacity(0.40) : KitchenTheme.separator.opacity(0.5),
+                        lineWidth: selected ? 1.2 : 0.5
                     )
             )
     }
@@ -191,6 +162,24 @@ struct ZaoWangyeSurfaceStyle: ViewModifier {
 extension View {
     func zaoWangyeSurface(selected: Bool = false) -> some View {
         modifier(ZaoWangyeSurfaceStyle(selected: selected))
+    }
+}
+
+// MARK: - Brand Mark (Phase D commits this to all toolbars)
+
+struct KitchenBrandMark: View {
+    var size: CGFloat = 28
+
+    var body: some View {
+        Image("ZaoWangyeHero")
+            .resizable()
+            .interpolation(.high)
+            .scaledToFill()
+            .frame(width: size, height: size)
+            .clipShape(Circle())
+            .overlay(
+                Circle().strokeBorder(KitchenTheme.brandGold.opacity(0.7), lineWidth: 1)
+            )
     }
 }
 
@@ -208,43 +197,8 @@ private struct ZaoWangyeArtwork: View {
             .clipShape(Circle())
             .overlay(
                 Circle()
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [KitchenTheme.zaoGold.opacity(0.90), .white.opacity(0.22)],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1.8
-                    )
+                    .strokeBorder(KitchenTheme.brandGold.opacity(0.85), lineWidth: 2)
             )
-            .shadow(color: KitchenTheme.zaoSun.opacity(0.60), radius: 16, y: 8)
-    }
-}
-
-// MARK: - Backdrop
-
-private struct ZaoWangyeBackdrop: View {
-    var body: some View {
-        ZStack {
-            // Warm glow anchored at top-center — lights up the title area
-            Ellipse()
-                .fill(KitchenTheme.zaoGold.opacity(0.40))
-                .frame(width: 200, height: 140)
-                .blur(radius: 36)
-                .offset(x: -20, y: -50)
-
-            // Hot accent behind the artwork circle
-            Circle()
-                .fill(KitchenTheme.zaoSun.opacity(0.45))
-                .frame(width: 100)
-                .blur(radius: 24)
-                .offset(x: 110, y: -36)
-
-            // Subtle bottom warmth
-            Circle()
-                .fill(KitchenTheme.zaoAmber.opacity(0.18))
-                .frame(width: 180)
-                .blur(radius: 32)
-                .offset(x: 30, y: 100)
-        }
+            .shadow(color: Color.black.opacity(0.08), radius: 12, y: 6)
     }
 }
