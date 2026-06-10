@@ -24,6 +24,7 @@ The app includes an AI cooking assistant named Zao Wangye. It can generate recip
 - **AI integration**: `AIChefEngine`, using an OpenAI Chat Completions-compatible API
 - **Inventory alerts**: `AlertEngine`
 - **Local data rules**: `KitchenData` for ingredient categories, unit guesses, name normalization, and estimated prices
+- **Secret storage**: API keys are stored in the system Keychain instead of the app's JSON state file
 
 ## Architecture
 
@@ -78,6 +79,8 @@ Open the in-app settings screen to configure:
 
 `AIChefEngine` appends `/chat/completions` when needed and requests JSON responses so the app can parse dish names, cooking tips, and ingredient lists.
 
+The API key is stored in the system Keychain. Base URL and model settings remain in the app's local JSON state because they are not secrets.
+
 ## Data Persistence
 
 On first launch, the app loads sample inventory, shopping, meal planning, and budget data. User changes are saved automatically to:
@@ -86,7 +89,7 @@ On first launch, the app loads sample inventory, shopping, meal planning, and bu
 ~/Documents/kitchen_data.json
 ```
 
-The saved state includes inventory items, shopping list state, weekly meal plans, budget records, hydration records, and AI API settings.
+The saved state includes inventory items, shopping list state, weekly meal plans, budget records, hydration records, and non-secret AI settings. API keys are not written to this JSON file.
 
 ## Project Status
 

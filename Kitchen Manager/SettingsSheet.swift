@@ -11,7 +11,7 @@ struct SettingsSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Text("灶王爷设置"), footer: Text("兼容 OpenAI 格式接口。请妥善保管 API Key。")) {
+                Section(header: Text("灶王爷设置"), footer: Text("兼容 OpenAI 格式接口。API Key 会保存在系统 Keychain 中。")) {
                     SecureField("API Key", text: $apiKey)
                         .textContentType(.password)
                         .autocorrectionDisabled()

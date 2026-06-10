@@ -1,4 +1,5 @@
 import SwiftUI
+import Security
 
 @Observable
 final class KitchenStore {
@@ -23,7 +24,11 @@ final class KitchenStore {
     }
     
     var aiApiKey: String = "" {
-        didSet { scheduleSave() }
+        didSet {
+            if !KeychainSecretStore.saveAPIKey(aiApiKey) {
+                print("Failed to save AI API key to Keychain.")
+            }
+        }
     }
     
     var aiBaseURL: String = "https://api.openai.com/v1" {
@@ -330,7 +335,6 @@ final class KitchenStore {
             mealPlans: mealPlans,
             budgetState: budgetState,
             hydrationState: hydrationState,
-            aiApiKey: aiApiKey,
             aiBaseURL: aiBaseURL,
             aiModel: aiModel
         )
@@ -343,6 +347,8 @@ final class KitchenStore {
     }
 
     private func load() {
+        aiApiKey = KeychainSecretStore.apiKey()
+
         guard let data = try? Data(contentsOf: fileURL) else {
             // 第一次启动，加载示例数据
             inventoryItems = InventoryItem.samples
@@ -372,7 +378,12 @@ final class KitchenStore {
             budgetState = savedData.budgetState
             hydrationState = savedData.hydrationState ?? HydrationState()
             migratePurchaseTransactionsIfNeeded()
-            aiApiKey = savedData.aiApiKey ?? ""
+            if let legacyAPIKey = savedData.legacyAiApiKey,
+               !legacyAPIKey.isEmpty,
+               KeychainSecretStore.apiKey().isEmpty {
+                _ = KeychainSecretStore.saveAPIKey(legacyAPIKey)
+            }
+            aiApiKey = KeychainSecretStore.apiKey()
             aiBaseURL = savedData.aiBaseURL ?? "https://api.openai.com/v1"
             aiModel = savedData.aiModel ?? "gpt-4o-mini"
         } catch {
@@ -598,8 +609,129 @@ final class KitchenStore {
         let mealPlans: [String: [MealSlot: String]]
         let budgetState: BudgetState
         var hydrationState: HydrationState?
-        var aiApiKey: String?
+        var legacyAiApiKey: String?
         var aiBaseURL: String?
         var aiModel: String?
+
+        enum CodingKeys: String, CodingKey {
+            case inventoryItems
+            case shoppingState
+            case mealPlans
+            case budgetState
+            case hydrationState
+            case legacyAiApiKey = "aiApiKey"
+            case aiBaseURL
+            case aiModel
+        }
+
+        init(
+            inventoryItems: [InventoryItem],
+            shoppingState: ShoppingState,
+            mealPlans: [String: [MealSlot: String]],
+            budgetState: BudgetState,
+            hydrationState: HydrationState?,
+            aiBaseURL: String?,
+            aiModel: String?
+        ) {
+            self.inventoryItems = inventoryItems
+            self.shoppingState = shoppingState
+            self.mealPlans = mealPlans
+            self.budgetState = budgetState
+            self.hydrationState = hydrationState
+            self.legacyAiApiKey = nil
+            self.aiBaseURL = aiBaseURL
+            self.aiModel = aiModel
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            inventoryItems = try container.decode([InventoryItem].self, forKey: .inventoryItems)
+            shoppingState = try container.decode(ShoppingState.self, forKey: .shoppingState)
+            mealPlans = try container.decode([String: [MealSlot: String]].self, forKey: .mealPlans)
+            budgetState = try container.decode(BudgetState.self, forKey: .budgetState)
+            hydrationState = try container.decodeIfPresent(HydrationState.self, forKey: .hydrationState)
+            legacyAiApiKey = try container.decodeIfPresent(String.self, forKey: .legacyAiApiKey)
+            aiBaseURL = try container.decodeIfPresent(String.self, forKey: .aiBaseURL)
+            aiModel = try container.decodeIfPresent(String.self, forKey: .aiModel)
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(inventoryItems, forKey: .inventoryItems)
+            try container.encode(shoppingState, forKey: .shoppingState)
+            try container.encode(mealPlans, forKey: .mealPlans)
+            try container.encode(budgetState, forKey: .budgetState)
+            try container.encodeIfPresent(hydrationState, forKey: .hydrationState)
+            try container.encodeIfPresent(aiBaseURL, forKey: .aiBaseURL)
+            try container.encodeIfPresent(aiModel, forKey: .aiModel)
+        }
+    }
+}
+
+private enum KeychainSecretStore {
+    private static let service = "com.kitchen-manager.ai"
+    private static let apiKeyAccount = "ai-api-key"
+
+    static func apiKey() -> String {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: apiKeyAccount,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess,
+              let data = result as? Data,
+              let value = String(data: data, encoding: .utf8) else {
+            return ""
+        }
+
+        return value
+    }
+
+    static func saveAPIKey(_ value: String) -> Bool {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return deleteAPIKey()
+        }
+
+        let encoded = Data(trimmed.utf8)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: apiKeyAccount
+        ]
+
+        let updateStatus = SecItemUpdate(
+            query as CFDictionary,
+            [kSecValueData as String: encoded] as CFDictionary
+        )
+
+        if updateStatus == errSecSuccess {
+            return true
+        }
+
+        guard updateStatus == errSecItemNotFound else {
+            return false
+        }
+
+        var attributes = query
+        attributes[kSecValueData as String] = encoded
+        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        return SecItemAdd(attributes as CFDictionary, nil) == errSecSuccess
+    }
+
+    private static func deleteAPIKey() -> Bool {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: apiKeyAccount
+        ]
+
+        let status = SecItemDelete(query as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
     }
 }
