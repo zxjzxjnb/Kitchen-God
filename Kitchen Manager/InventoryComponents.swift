@@ -24,7 +24,7 @@ struct InventoryCategoryFilter: View {
                         selectedCategory = "全部"
                     }
 
-                    ForEach(KitchenData.categories, id: \.self) { category in
+                    ForEach(KitchenData.categories + counts.keys.filter { !KitchenData.categories.contains($0) }.sorted(), id: \.self) { category in
                         InventoryCategoryChip(
                             title: category,
                             count: counts[category, default: 0],
@@ -37,7 +37,7 @@ struct InventoryCategoryFilter: View {
                 }
             }
         }
-        .cardStyle()
+
     }
 }
 
@@ -65,6 +65,7 @@ struct InventoryCategoryChip: View {
             .foregroundStyle(isSelected ? .white : .primary)
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
+            .frame(minHeight: 44)
             .background(
                 isSelected ? KitchenTheme.brandCrimson : KitchenTheme.surfaceElevated,
                 in: Capsule()
@@ -75,10 +76,13 @@ struct InventoryCategoryChip: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("\(title)，\(count) 项")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
 struct InventoryItemRow: View {
+    @Environment(\.dynamicTypeSize) private var typeSize
     let item: InventoryItem
     let insight: InventoryItemInsight
     let showCategory: Bool
@@ -86,128 +90,75 @@ struct InventoryItemRow: View {
     let onDelete: () -> Void
     let onEdit: () -> Void
 
-    private var categoryColor: Color {
-        InventoryPalette.color(for: item.category)
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 10) {
+        Group {
+            if typeSize.isAccessibilitySize {
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack(alignment: .center, spacing: 8) {
-                        Text(item.name)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(KitchenTheme.textPrimary)
-                            .lineLimit(1)
-
-                        if showCategory {
-                            CategoryTag(
-                                title: item.category,
-                                tint: categoryColor.opacity(0.14),
-                                textColor: categoryColor
-                            )
-                        }
-
-                        if let status = insight.status {
-                            Text(status.text)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(status.color)
-                                .lineLimit(1)
-                        }
-
-                        Spacer(minLength: 0)
-                    }
-
-                    if !insight.detail.isEmpty {
-                        Text(insight.detail)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
+                    editButton
+                    quantityControls.frame(maxWidth: .infinity, alignment: .trailing)
                 }
-
-                Button(action: onDelete) {
-                    Image(systemName: "trash")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 28, height: 28)
-                        .background(KitchenTheme.surfaceElevated, in: Circle())
-                }
-                .buttonStyle(.plain)
-            }
-
-            HStack(alignment: .bottom, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("\(item.quantity)\(item.unit)")
-                        .font(.title3.weight(.bold).monospacedDigit())
-
-                    HStack(spacing: 10) {
-                        Text("约 \(item.estimatedRemainingValue.currencyText)")
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
+            } else {
                 HStack(spacing: 8) {
-                    InventoryAdjustButton(symbol: "minus") { onAdjust(-1) }
-                    InventoryAdjustButton(symbol: "plus") { onAdjust(1) }
+                    editButton
+                    quantityControls
                 }
             }
         }
-        .padding(14)
-        .background(backgroundColor, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(borderColor, lineWidth: 1)
-        )
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onEdit)
-    }
-
-    private var backgroundColor: Color {
-        switch insight.focus {
-        case .critical:
-            return KitchenTheme.danger.opacity(0.12)
-        case .upcoming:
-            return KitchenTheme.warning.opacity(0.12)
-        case nil:
-            if insight.status?.level == .warning {
-                return KitchenTheme.warning.opacity(0.04)
-            }
-            return KitchenTheme.surface
+        .padding(.vertical, 8)
+        .contextMenu {
+            Button("编辑", action: onEdit)
+            Button("移除", role: .destructive, action: onDelete)
         }
     }
 
-    private var borderColor: Color {
-        switch insight.focus {
-        case .critical:
-            return KitchenTheme.danger.opacity(0.32)
-        case .upcoming:
-            return KitchenTheme.warning.opacity(0.32)
-        case nil:
-            return insight.status?.color.opacity(0.24) ?? KitchenTheme.separator.opacity(0.5)
+    private var editButton: some View {
+        Button(action: onEdit) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.name)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                if let status = insight.status {
+                    Text(status.text)
+                        .font(.caption)
+                        .foregroundStyle(status.color)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("编辑\(item.name)")
+        .accessibilityValue(insight.status?.text ?? "")
+    }
+
+    private var quantityControls: some View {
+        HStack(spacing: 0) {
+            InventoryAdjustButton(symbol: "minus", label: "减少\(item.name) 1\(item.unit)") { onAdjust(-1) }
+                .disabled(item.quantityValue <= 0)
+            Text("\(item.quantity)\(item.unit)")
+                .font(.subheadline.monospacedDigit())
+                .fixedSize()
+            InventoryAdjustButton(symbol: "plus", label: "增加\(item.name) 1\(item.unit)") { onAdjust(1) }
         }
     }
 }
 
 struct InventoryAdjustButton: View {
     let symbol: String
+    let label: String
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.caption.weight(.bold))
-                .frame(width: 32, height: 32)
-                .background(KitchenTheme.surfaceElevated, in: Circle())
-                .overlay(
-                    Circle()
-                        .stroke(KitchenTheme.separator.opacity(0.5), lineWidth: 1)
-                )
+                .font(.system(size: 16, weight: .semibold))
+                .frame(width: 28, height: 28)
+                .background(KitchenTheme.background, in: Circle())
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 }
 

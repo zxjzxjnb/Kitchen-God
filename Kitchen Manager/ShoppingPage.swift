@@ -7,6 +7,7 @@ struct ShoppingPage: View {
     @State private var selectedCategory = "全部"
     @State private var showingAddForm = false
     @State private var showingFixedDays = false
+    @State private var showingSchedule = false
     @State private var showingCheckout = false
 
     private var currentWeekDates: [Date] {
@@ -15,10 +16,6 @@ struct ShoppingPage: View {
 
     private var resolvedDays: [String] {
         store.shoppingState.resolvedShopDays(for: currentWeekDates)
-    }
-
-    private var filteredItems: [ShoppingItem] {
-        selectedCategory == "全部" ? store.shoppingState.items : store.shoppingState.items.filter { $0.category == selectedCategory }
     }
 
     private var completedCount: Int {
@@ -33,241 +30,107 @@ struct ShoppingPage: View {
         checkedItems.reduce(0) { $0 + $1.estimatedTotalCost }
     }
 
-    private var pendingItems: [ShoppingItem] {
-        store.shoppingState.items.filter { !$0.isChecked }
-    }
-
-    private var pendingEstimatedTotal: Double {
-        pendingItems.reduce(0) { $0 + $1.estimatedTotalCost }
-    }
-
-    private var projectedBudgetRemaining: Double {
-        store.budgetState.monthlyBudget - store.currentMonthSpent - pendingEstimatedTotal
-    }
-
-    private var nearestShopDay: String {
-        let today = DateHelper.todayKey
-        return resolvedDays.first(where: { $0 >= today }) ?? resolvedDays.first ?? ""
-    }
-
-    private var nearestShopDayText: String {
-        guard !nearestShopDay.isEmpty else { return "未设定" }
-        if nearestShopDay == DateHelper.todayKey { return "今天" }
-        guard let date = DateHelper.date(from: nearestShopDay) else { return nearestShopDay }
-        return "\(DateHelper.weekdayName(for: date)) \(DateHelper.monthDayString(date))"
-    }
-
-    private var headerMessage: String {
-        if pendingItems.isEmpty {
-            return completedCount > 0 ? "采购清单已经处理完，可以直接结算入库。" : "采购清单已经清爽，暂时不用额外补货。"
-        }
-        if projectedBudgetRemaining < 0 {
-            return "这批采购会让预算超出，优先删减非必要项。"
-        }
-        if resolvedDays.isEmpty {
-            return "先选一个购物日，清单就能按日期分组处理。"
-        }
-        if nearestShopDay == DateHelper.todayKey {
-            return "今天适合把清单带出门，未分配项目可以一键归到最近购物日。"
-        }
-        return "清单和预算都在可控范围，按购物日分批处理就好。"
+    private var itemGroups: [ShoppingDayGroup] {
+        store.shoppingState.itemGroups(category: selectedCategory)
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 14) {
-                    KitchenPageHeader(
-                        eyebrow: "采购节奏",
-                        title: pendingItems.isEmpty ? "清单已清爽" : "\(pendingItems.count) 项待采购",
-                        message: headerMessage,
-                        symbol: "cart.fill",
-                        accent: projectedBudgetRemaining < 0 ? KitchenTheme.danger : KitchenTheme.brandGold,
-                        metrics: [
-                            KitchenMetric(title: "待购预估", value: pendingEstimatedTotal.currencyText, symbol: "eurosign.circle.fill", accent: KitchenTheme.brandGold),
-                            KitchenMetric(title: "预算余量", value: projectedBudgetRemaining.currencyText, symbol: projectedBudgetRemaining >= 0 ? "checkmark.seal.fill" : "exclamationmark.triangle.fill", accent: projectedBudgetRemaining >= 0 ? KitchenTheme.brandGold : KitchenTheme.danger),
-                            KitchenMetric(title: "下次购物", value: nearestShopDayText, symbol: "calendar.badge.clock", accent: KitchenTheme.brandGold)
-                        ],
-                        actionTitle: "添加采购项",
-                        actionSymbol: "plus.circle.fill",
-                        action: { showingAddForm = true }
-                    )
-                    .padding(.horizontal)
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        Text("\(store.shoppingState.items.count) 项").font(.headline)
+                        Spacer()
+                        Text("预估 \(store.pendingShoppingEstimate.currencyText)")
+                            .monospacedDigit()
+                    }
 
-                    // Shopping days
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text("购物日")
-                                .font(.headline)
-                            Spacer()
-                            Button { showingFixedDays = true } label: {
-                                HStack(spacing: 3) {
-                                    Image(systemName: "repeat")
-                                    Text("固定")
-                                }
-                                .font(.caption.weight(.medium))
-                            }
-                        }
-
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 8)], spacing: 8) {
-                            ForEach(currentWeekDates, id: \.self) { date in
-                                let dateKey = DateHelper.key(for: date)
-                                let isSelected = resolvedDays.contains(dateKey)
-                                DayChip(
-                                    weekday: DateHelper.weekdayName(for: date),
-                                    dayText: DateHelper.monthDayString(date),
-                                    badgeCount: pendingCount(for: dateKey),
-                                    isSelected: isSelected,
-                                    isToday: dateKey == DateHelper.todayKey,
-                                    accent: KitchenTheme.brandGold,
-                                    minHeight: 44
-                                ) {
-                                    toggleShoppingDay(dateKey)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(["全部"] + KitchenData.categories, id: \.self) { category in
+                                KitchenChip(title: category,
+                                            style: selectedCategory == category ? .filled : .tinted,
+                                            isSelected: selectedCategory == category) {
+                                    selectedCategory = category
                                 }
                             }
                         }
                     }
-                    .cardStyle()
-                    .padding(.horizontal)
 
-                    // Category filter
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text("分类筛选")
-                                .font(.headline)
-                            Spacer()
-                            Text("\(filteredItems.count) 项")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 6) {
-                                ForEach(["全部"] + KitchenData.categories, id: \.self) { category in
-                                    KitchenChip(
-                                        title: category,
-                                        style: selectedCategory == category ? .filled : .tinted,
-                                        color: KitchenTheme.brandCrimson,
-                                        isSelected: selectedCategory == category
-                                    ) {
-                                        selectedCategory = category
-                                    }
-                                }
-                            }
-                        }
-                        .frame(minHeight: 0)
-                    }
-                    .cardStyle()
-                    .padding(.horizontal)
-
-                    // Item list
-                    if store.shoppingState.items.isEmpty {
-                        EmptyStateCard(symbol: "cart.fill", title: "清单是空的", subtitle: "先去灶王爷里点菜或看推荐。")
-                            .padding(.horizontal)
-                    } else if resolvedDays.isEmpty {
-                        VStack(spacing: 0) {
-                            ForEach(filteredItems) { item in
-                                ShoppingItemRow(
-                                    item: item,
-                                    onToggle: { toggleItem(item) },
-                                    onDelete: { deleteItem(item) }
-                                )
-                            }
-                        }
-                        .cardStyle()
-                        .padding(.horizontal)
+                    if itemGroups.isEmpty {
+                        EmptyStateCard(symbol: "cart", title: "暂无采购项", subtitle: "")
                     } else {
-                        ForEach(resolvedDays, id: \.self) { day in
-                            let items = filteredItems.filter { $0.day == day }
-                            if !items.isEmpty {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    HStack {
-                                        Text(day == DateHelper.todayKey ? "今天购物" : day)
-                                            .font(.subheadline.weight(.semibold))
-                                        Spacer()
-                                        Text("\(items.count) 项")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    .padding(.bottom, 4)
-
-                                    ForEach(items) { item in
-                                        ShoppingItemRow(
-                                            item: item,
-                                            onToggle: { toggleItem(item) },
-                                            onDelete: { deleteItem(item) }
-                                        )
-                                    }
-                                }
-                                .cardStyle()
-                                .padding(.horizontal)
-                            }
-                        }
-
-                        let unassignedItems = filteredItems.filter { $0.day.isEmpty }
-                        if !unassignedItems.isEmpty {
-                            VStack(alignment: .leading, spacing: 0) {
+                        ForEach(itemGroups) { group in
+                            VStack(alignment: .leading, spacing: 8) {
                                 HStack {
-                                    Text("未分配")
-                                        .font(.subheadline.weight(.semibold))
+                                    Text(group.title()).font(.headline)
+                                        .accessibilityAddTraits(.isHeader)
                                     Spacer()
-                                    if !resolvedDays.isEmpty {
-                                        Button("全部分配") { assignAllUnassigned() }
-                                            .font(.caption.weight(.medium))
+                                    if group.day.isEmpty {
+                                        Button("分配到今天") { assignVisibleUnassigned() }
+                                            .font(.caption)
+                                            .frame(minHeight: 44)
                                     }
                                 }
-                                .padding(.bottom, 4)
-
-                                ForEach(unassignedItems) { item in
-                                    ShoppingItemRow(
-                                        item: item,
-                                        onToggle: { toggleItem(item) },
-                                        onDelete: { deleteItem(item) }
-                                    )
-                                    .contextMenu {
-                                        ForEach(resolvedDays, id: \.self) { day in
-                                            Button("分配到 \(day == DateHelper.todayKey ? "今天" : day)") {
-                                                assignItemToDay(item, day: day)
-                                            }
-                                        }
+                                VStack(spacing: 0) {
+                                    ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
+                                        ShoppingItemRow(item: item, onToggle: { toggleItem(item) },
+                                                        onDelete: { deleteItem(item) },
+                                                        shopDays: Array(Set(resolvedDays + [DateHelper.todayKey, item.day])).filter { !$0.isEmpty }.sorted(),
+                                                        onAssign: { assignItemToDay(item, day: $0) })
+                                        if index < group.items.count - 1 { Divider() }
                                     }
                                 }
+                                .padding(.horizontal, 12)
+                                .background(KitchenTheme.surface, in: RoundedRectangle(cornerRadius: KitchenTheme.Radius.md))
                             }
-                            .cardStyle()
-                            .padding(.horizontal)
                         }
                     }
-
                 }
-                .padding(.vertical, 8)
+                .padding()
             }
             .background(KitchenTheme.background)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                checkoutBottomBar
-            }
+            .safeAreaInset(edge: .bottom, spacing: 0) { checkoutBottomBar }
             .navigationTitle("购物清单")
             .animation(.snappy(duration: 0.22), value: completedCount)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    KitchenBrandMark()
+                    Button { showingSchedule = true } label: { Image(systemName: "calendar") }
+                        .accessibilityLabel("购物日")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { showingAddForm = true } label: {
-                        Image(systemName: "plus")
-                    }
+                    Button { showingAddForm = true } label: { Image(systemName: "plus") }
+                        .accessibilityLabel("添加采购项")
                 }
             }
             .sheet(isPresented: $showingAddForm) {
-                AddShoppingItemSheet(form: $form, shopDays: resolvedDays) {
+                AddShoppingItemSheet(form: $form, shopDays: Array(Set(resolvedDays + [DateHelper.todayKey, form.day])).filter { !$0.isEmpty }.sorted()) {
                     addManualShoppingItem()
                 }
             }
-            .sheet(isPresented: $showingFixedDays) {
-                FixedShopDaysSheet()
+            .sheet(isPresented: $showingSchedule) {
+                NavigationStack {
+                    Form {
+                        Section {
+                            ForEach(currentWeekDates, id: \.self) { date in
+                                let key = DateHelper.key(for: date)
+                                Toggle("\(DateHelper.weekdayName(for: date)) \(DateHelper.monthDayString(date))", isOn: Binding(
+                                    get: { resolvedDays.contains(key) },
+                                    set: { _ in toggleShoppingDay(key) }
+                                ))
+                            }
+                        }
+                        Section { Button("每周重复…") { showingFixedDays = true } }
+                    }
+                    .navigationTitle("购物日")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar { ToolbarItem(placement: .confirmationAction) {
+                        Button("完成") { showingSchedule = false }
+                    } }
+                    .sheet(isPresented: $showingFixedDays) { FixedShopDaysSheet() }
+                }
             }
-            .sheet(isPresented: $showingCheckout) {
-                CheckoutSheet(checkedItems: checkedItems)
-            }
+            .sheet(isPresented: $showingCheckout) { CheckoutSheet(checkedItems: checkedItems) }
         }
     }
 
@@ -307,6 +170,7 @@ struct ShoppingPage: View {
                             .frame(minWidth: 108)
                     }
                     .buttonStyle(.borderedProminent)
+                    .tint(KitchenTheme.brandCrimson)
                     .controlSize(.large)
                 }
                 .padding(.horizontal, 16)
@@ -320,16 +184,20 @@ struct ShoppingPage: View {
     // MARK: - Actions
 
     private func toggleShoppingDay(_ day: String) {
+        if let date = DateHelper.date(from: day) {
+            let weekday = Calendar.current.component(.weekday, from: date)
+            let normalized = weekday == 1 ? 7 : weekday - 1
+            if store.shoppingState.fixedShopWeekdays.contains(normalized) {
+                showingFixedDays = true
+                return
+            }
+        }
         if let index = store.shoppingState.shopDays.firstIndex(of: day) {
             store.shoppingState.shopDays.remove(at: index)
         } else {
             store.shoppingState.shopDays.append(day)
             store.shoppingState.shopDays.sort()
         }
-    }
-
-    private func pendingCount(for day: String) -> Int {
-        store.shoppingState.items.filter { !$0.isChecked && $0.day == day }.count
     }
 
     private func addManualShoppingItem() {
@@ -371,13 +239,12 @@ struct ShoppingPage: View {
         store.showToast("\(item.name) → \(day == DateHelper.todayKey ? "今天" : day)")
     }
 
-    private func assignAllUnassigned() {
-        let day = nearestShopDay
-        guard !day.isEmpty else { return }
+    private func assignVisibleUnassigned() {
         for i in store.shoppingState.items.indices where store.shoppingState.items[i].day.isEmpty {
-            store.shoppingState.items[i].day = day
+            if selectedCategory == "全部" || store.shoppingState.items[i].category == selectedCategory {
+                store.shoppingState.items[i].day = DateHelper.todayKey
+            }
         }
-        store.showToast("已全部分配到 \(day == DateHelper.todayKey ? "今天" : day)")
     }
 
     private func clearCheckedItems() {
@@ -461,7 +328,10 @@ struct CheckoutSheet: View {
                     }
 
                     Button("确认结算") {
-                        store.checkoutShoppingTrip(lineItems: lineItems)
+                        guard store.checkoutShoppingTrip(lineItems: lineItems) else {
+                            store.showToast("请至少保留一项有效的商品名称和数量。", kind: .error)
+                            return
+                        }
                         store.showToast("搞定,\(lineItems.count) 项进库,共支出 \(total.currencyText)。", kind: .success)
                         dismiss()
                     }
@@ -481,6 +351,7 @@ struct CheckoutSheet: View {
         .onAppear {
             lineItems = checkedItems.map { item in
                 PurchaseLineItem(
+                    shoppingItemID: item.id,
                     name: item.name,
                     quantity: item.quantity.isEmpty ? "1" : item.quantity,
                     unit: item.unit,

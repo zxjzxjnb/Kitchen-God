@@ -34,7 +34,7 @@ struct ContentView: View {
                     .padding(.top, 8)
             }
         }
-        .tint(KitchenTheme.brandCrimson)
+        .tint(KitchenTheme.brandForeground)
         .sensoryFeedback(trigger: store.toastMessage) { _, newValue in
             guard newValue != nil else { return nil }
             switch store.toastKind {

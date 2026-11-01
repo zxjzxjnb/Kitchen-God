@@ -14,6 +14,7 @@ enum KitchenTheme {
     // MARK: Brand (4)
 
     static let brandCrimson = Color("BrandCrimson")
+    static let brandForeground = Color("BrandForeground")
     static let brandAmber   = Color("BrandAmber")
     static let brandGold    = Color("BrandGold")
     static let brandCream   = Color("BrandCream")

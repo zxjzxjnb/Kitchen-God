@@ -8,6 +8,8 @@ struct BudgetPage: View {
     @State private var editingPurchaseRecord: PurchaseRecord?
     @State private var editingTransaction: BudgetTransaction?
     @State private var showingBudgetEditor = false
+    @State private var showingExpenseForm = false
+    @State private var expenseDate = Date()
     @FocusState private var focusedField: Field?
 
     private enum Field {
@@ -92,69 +94,24 @@ struct BudgetPage: View {
         return "\(parts[0])年\(month)月"
     }
 
-    private var budgetUseText: String {
-        guard store.budgetState.monthlyBudget > 0 else { return "未设置" }
-        let rate = currentMonthSpent / store.budgetState.monthlyBudget
-        return "\(Int((rate * 100).rounded()))%"
-    }
-
-    private var headerMessage: String {
-        if projectedRemaining < 0 {
-            return "本月会超出预算，先看看待购预估和浪费记录。"
-        }
-        if pendingShoppingEstimate > 0 {
-            return "预算仍有余量，待购清单已经计入预计支出。"
-        }
-        if currentMonthSpent == 0 {
-            return "这个月还没有记录支出，可以从补记实付开始。"
-        }
-        return "厨房成本保持在预算内，继续按当前节奏记录。"
-    }
-
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    KitchenPageHeader(
-                        eyebrow: selectedMonthText,
-                        title: projectedRemaining >= 0 ? "预计可用 \(projectedRemaining.currencyText)" : "预计超支 \(abs(projectedRemaining).currencyText)",
-                        message: headerMessage,
-                        symbol: "banknote.fill",
-                        accent: projectedRemaining >= 0 ? KitchenTheme.brandGold : KitchenTheme.danger,
-                        metrics: [
-                            KitchenMetric(title: "预算上限", value: store.budgetState.monthlyBudget.currencyText, symbol: "gauge.with.dots.needle.33percent", accent: KitchenTheme.brandGold),
-                            KitchenMetric(title: "已支出", value: currentMonthSpent.currencyText, symbol: "cart.fill", accent: KitchenTheme.brandGold),
-                            KitchenMetric(title: "使用率", value: budgetUseText, symbol: projectedRemaining >= 0 ? "chart.pie.fill" : "exclamationmark.triangle.fill", accent: projectedRemaining >= 0 ? KitchenTheme.brandGold : KitchenTheme.danger)
-                        ],
-                        actionTitle: "设置预算上限",
-                        actionSymbol: "slider.horizontal.3",
-                        action: { showingBudgetEditor = true }
-                    )
-                    .padding(.horizontal)
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("补记实付")
-                            .font(.headline)
-
-                        HStack(spacing: 10) {
-                            TextField("金额", text: $form.amount)
-                                .textFieldStyle(.roundedBorder)
-                                .keyboardType(.decimalPad)
-                                .focused($focusedField, equals: .amount)
-
-                            Picker("分类", selection: $form.category) {
-                                ForEach(KitchenData.budgetCategories, id: \.self) { Text($0).tag($0) }
-                            }
-                            .pickerStyle(.menu)
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text(projectedRemaining >= 0 ? "预计可用" : "预计超支")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                        Text(abs(projectedRemaining).currencyText)
+                            .font(KitchenType.display.monospacedDigit())
+                            .foregroundStyle(projectedRemaining >= 0 ? KitchenTheme.textPrimary : KitchenTheme.danger)
+                        Divider()
+                        LabeledContent("预算", value: store.budgetState.monthlyBudget.currencyText)
+                        LabeledContent("已支出", value: currentMonthSpent.currencyText)
+                        if pendingShoppingEstimate > 0 {
+                            LabeledContent("待结算", value: pendingShoppingEstimate.currencyText)
                         }
-
-                        TextField("备注（可选）", text: $form.note)
-                            .textFieldStyle(.roundedBorder)
-                            .focused($focusedField, equals: .note)
-                            .submitLabel(.done)
-
-                        FilledButton(title: "记录支出") { addTransaction() }
                     }
+                    .font(.subheadline)
                     .cardStyle()
                     .padding(.horizontal)
 
@@ -177,6 +134,9 @@ struct BudgetPage: View {
                                 PurchaseRecordRow(record: record)
                                     .contentShape(Rectangle())
                                     .onTapGesture { editingPurchaseRecord = record }
+                                    .accessibilityElement(children: .combine)
+                                    .accessibilityAddTraits(.isButton)
+                                    .accessibilityAction { editingPurchaseRecord = record }
                             }
                         }
                     }
@@ -202,6 +162,9 @@ struct BudgetPage: View {
                                 OtherExpenseRow(transaction: tx)
                                     .contentShape(Rectangle())
                                     .onTapGesture { editingTransaction = tx }
+                                    .accessibilityElement(children: .combine)
+                                    .accessibilityAddTraits(.isButton)
+                                    .accessibilityAction { editingTransaction = tx }
                             }
                         }
                     }
@@ -240,7 +203,7 @@ struct BudgetPage: View {
                 }
             )
             .background(KitchenTheme.background)
-            .navigationTitle(selectedMonth == DateHelper.monthKey(for: Date()) ? "厨房账本" : "\(selectedMonth) 成本")
+            .navigationTitle("厨房账本")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Menu {
@@ -249,7 +212,7 @@ struct BudgetPage: View {
                         }
                     } label: {
                         HStack(spacing: 3) {
-                            Image(systemName: "calendar")
+                            Text(selectedMonthText)
                             Image(systemName: "chevron.down")
                                 .font(.caption2)
                         }
@@ -257,8 +220,11 @@ struct BudgetPage: View {
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { showingBudgetEditor = true } label: {
-                        Image(systemName: "slider.horizontal.3")
+                    HStack {
+                        Button { showingBudgetEditor = true } label: { Image(systemName: "slider.horizontal.3") }
+                            .accessibilityLabel("设置预算")
+                        Button { showingExpenseForm = true } label: { Image(systemName: "plus") }
+                            .accessibilityLabel("记录支出")
                     }
                 }
 
@@ -267,6 +233,37 @@ struct BudgetPage: View {
                     Button("完成") {
                         focusedField = nil
                     }
+                }
+            }
+            .sheet(isPresented: $showingExpenseForm) {
+                NavigationStack {
+                    Form {
+                        HStack(spacing: 10) {
+                            TextField("金额", text: $form.amount)
+                                .textFieldStyle(.roundedBorder)
+                                .keyboardType(.decimalPad)
+                                .focused($focusedField, equals: .amount)
+
+                            Picker("分类", selection: $form.category) {
+                                ForEach(KitchenData.budgetCategories, id: \.self) { Text($0).tag($0) }
+                            }
+                            .pickerStyle(.menu)
+                        }
+
+                        TextField("备注（可选）", text: $form.note)
+                            .textFieldStyle(.roundedBorder)
+                            .focused($focusedField, equals: .note)
+                            .submitLabel(.done)
+
+                        DatePicker("日期", selection: $expenseDate, displayedComponents: .date)
+                        FilledButton(title: "记录支出") { addTransaction() }
+                            .disabled((Double(form.amount) ?? 0) <= 0)
+                    }
+                    .navigationTitle("记录支出")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar { ToolbarItem(placement: .cancellationAction) {
+                        Button("取消") { showingExpenseForm = false }
+                    } }
                 }
             }
             .sheet(item: $editingPurchaseRecord) { record in
@@ -317,9 +314,11 @@ struct BudgetPage: View {
             amount: amount,
             note: form.note.trimmingCharacters(in: .whitespacesAndNewlines),
             category: form.category,
-            date: DateHelper.todayKey
+            date: DateHelper.key(for: expenseDate)
         )
         store.budgetState.transactions.append(tx)
+        selectedMonth = DateHelper.monthKey(for: expenseDate)
+        showingExpenseForm = false
         focusedField = nil
         form.amount = ""
         form.note = ""
@@ -334,7 +333,7 @@ private struct PurchaseRecordRow: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: "basket.fill")
-                    .foregroundStyle(KitchenTheme.brandCrimson)
+                    .foregroundStyle(KitchenTheme.brandForeground)
                     .frame(width: 34, height: 34)
                     .background(KitchenTheme.brandCrimson.opacity(0.10), in: Circle())
 

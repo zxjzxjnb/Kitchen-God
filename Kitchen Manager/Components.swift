@@ -31,8 +31,9 @@ struct KitchenChip: View {
     var body: some View {
         Group {
             if let action {
-                Button(action: action) { content }
+                Button(action: action) { content.frame(minHeight: 44).contentShape(Rectangle()) }
                     .buttonStyle(KitchenPressStyle())
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
             } else {
                 content
             }
@@ -54,7 +55,7 @@ struct KitchenChip: View {
     private var textColor: Color {
         switch style {
         case .filled:   return .white
-        case .tinted, .outlined: return color
+        case .tinted, .outlined: return color == KitchenTheme.brandCrimson ? KitchenTheme.brandForeground : color
         }
     }
 
@@ -76,149 +77,6 @@ struct KitchenChip: View {
         return style == .outlined ? 1 : 0
     }
 }
-
-// MARK: - Page Header
-
-struct KitchenMetric: Identifiable {
-    let title: String
-    let value: String
-    let symbol: String
-    let accent: Color
-
-    var id: String { title }
-}
-
-struct KitchenPageHeader: View {
-    let eyebrow: String
-    let title: String
-    let message: String
-    let symbol: String
-    let accent: Color
-    let metrics: [KitchenMetric]
-    var actionTitle: String?
-    var actionSymbol: String?
-    var action: (() -> Void)?
-
-    private var metricColumns: [GridItem] {
-        [GridItem(.adaptive(minimum: 118), spacing: KitchenTheme.Spacing.md)]
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: KitchenTheme.Spacing.lg) {
-            HStack(alignment: .top, spacing: KitchenTheme.Spacing.md) {
-                Image(systemName: symbol)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(KitchenTheme.brandCrimson)
-                    .frame(width: 42, height: 42)
-                    .background(KitchenTheme.brandCrimson.opacity(0.10), in: Circle())
-
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(eyebrow)
-                        .font(KitchenType.eyebrow)
-                        .kerning(0.5)
-                        .foregroundStyle(KitchenTheme.brandCrimson)
-                        .padding(.horizontal, KitchenTheme.Spacing.sm)
-                        .padding(.vertical, KitchenTheme.Spacing.xs)
-                        .background(KitchenTheme.brandCrimson.opacity(0.08), in: Capsule())
-
-                    Text(title)
-                        .font(KitchenType.title)
-                        .foregroundStyle(KitchenTheme.textPrimary)
-
-                    Text(message)
-                        .font(KitchenType.body)
-                        .foregroundStyle(KitchenTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 0)
-            }
-
-            LazyVGrid(columns: metricColumns, spacing: KitchenTheme.Spacing.md) {
-                ForEach(metrics) { metric in
-                    KitchenMetricTile(metric: metric)
-                }
-            }
-
-            if let actionTitle, let actionSymbol, let action {
-                Button(action: action) {
-                    HStack(spacing: KitchenTheme.Spacing.sm) {
-                        Label(actionTitle, systemImage: actionSymbol)
-                            .font(KitchenType.body.weight(.semibold))
-                        Spacer(minLength: KitchenTheme.Spacing.sm)
-                        Image(systemName: "arrow.right.circle.fill")
-                            .font(.title3.weight(.semibold))
-                    }
-                    .foregroundStyle(KitchenTheme.brandCrimson)
-                    .padding(.horizontal, KitchenTheme.Spacing.md + 2)
-                    .padding(.vertical, 11)
-                    .background(
-                        KitchenTheme.brandCrimson.opacity(0.06),
-                        in: RoundedRectangle(cornerRadius: KitchenTheme.panelRadius, style: .continuous)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: KitchenTheme.panelRadius, style: .continuous)
-                            .stroke(KitchenTheme.brandCrimson.opacity(0.18), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(KitchenPressStyle())
-            }
-        }
-        .padding(KitchenTheme.Spacing.lg + 2)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            KitchenTheme.brandCream,
-            in: RoundedRectangle(cornerRadius: KitchenTheme.Radius.lg, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: KitchenTheme.Radius.lg, style: .continuous)
-                .strokeBorder(KitchenTheme.brandGold.opacity(0.25), lineWidth: 1)
-        )
-        .kitchenShadow()
-    }
-}
-
-private struct KitchenMetricTile: View {
-    let metric: KitchenMetric
-
-    var body: some View {
-        HStack(alignment: .center, spacing: KitchenTheme.Spacing.sm) {
-            Image(systemName: metric.symbol)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(metric.accent)
-                .frame(width: 28, height: 28)
-                .background(metric.accent.opacity(0.12), in: Circle())
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(metric.title)
-                    .font(KitchenType.detail)
-                    .foregroundStyle(KitchenTheme.textSecondary)
-                    .lineLimit(1)
-
-                Text(metric.value)
-                    .font(KitchenType.metric)
-                    .foregroundStyle(KitchenTheme.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, KitchenTheme.Spacing.md)
-        .padding(.vertical, KitchenTheme.Spacing.sm + 2)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            KitchenTheme.surfaceElevated,
-            in: RoundedRectangle(cornerRadius: KitchenTheme.panelRadius, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: KitchenTheme.panelRadius, style: .continuous)
-                .stroke(KitchenTheme.separator.opacity(0.5), lineWidth: 0.5)
-        )
-    }
-}
-
-// MARK: - Form Field
 
 struct FormField<Content: View>: View {
     let title: String
@@ -270,7 +128,7 @@ struct SecondaryButton: View {
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)
-        .tint(KitchenTheme.brandCrimson)
+        .tint(KitchenTheme.brandForeground)
         .controlSize(.large)
     }
 }
@@ -497,82 +355,55 @@ struct AlertCard: View {
     }
 }
 
-struct NoAlertCard: View {
-    var body: some View {
-        HStack(spacing: KitchenTheme.Spacing.md) {
-            Image(systemName: "checkmark.seal.fill")
-                .font(.title3)
-                .foregroundStyle(KitchenTheme.brandGold)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("一切正常")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(KitchenTheme.textPrimary)
-                Text("暂无到期提醒,库存充足。")
-                    .font(KitchenType.detail)
-                    .foregroundStyle(KitchenTheme.textSecondary)
-            }
-            Spacer()
-        }
-        .padding(KitchenTheme.Spacing.md + 2)
-        .background(
-            KitchenTheme.surfaceElevated,
-            in: RoundedRectangle(cornerRadius: KitchenTheme.Radius.md, style: .continuous)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: KitchenTheme.Radius.md, style: .continuous)
-                .stroke(KitchenTheme.brandGold.opacity(0.25), lineWidth: 1)
-        )
-    }
-}
-
 // MARK: - Shopping Item Row
 
 struct ShoppingItemRow: View {
     let item: ShoppingItem
     let onToggle: () -> Void
     let onDelete: () -> Void
+    var shopDays: [String] = []
+    var onAssign: ((String) -> Void)? = nil
 
     var body: some View {
-        HStack(spacing: KitchenTheme.Spacing.sm) {
+        HStack(spacing: 0) {
             Button(action: onToggle) {
-                Image(systemName: item.isChecked ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(item.isChecked ? KitchenTheme.brandGold : KitchenTheme.textTertiary)
-            }
-            .buttonStyle(KitchenPressStyle())
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.name)
-                    .font(KitchenType.body)
-                    .strikethrough(item.isChecked)
-                    .foregroundStyle(item.isChecked ? KitchenTheme.textSecondary : KitchenTheme.textPrimary)
-
-                HStack(spacing: 6) {
-                    if !item.quantity.isEmpty {
-                        Text("\(item.quantity)\(item.unit)")
-                            .font(KitchenType.detail)
-                            .foregroundStyle(KitchenTheme.textSecondary)
+                HStack(spacing: 10) {
+                    Image(systemName: item.isChecked ? "checkmark.circle.fill" : "circle")
+                        .font(.title3)
+                        .foregroundStyle(item.isChecked ? KitchenTheme.brandForeground : KitchenTheme.textSecondary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(item.name).font(.subheadline)
+                            .strikethrough(item.isChecked)
+                        Text("\(item.quantity)\(item.unit) · 约 \(item.estimatedTotalCost.currencyText)")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
-                    Text("约 \(item.estimatedTotalCost.currencyText)")
-                        .font(KitchenType.detail.weight(.medium))
-                        .foregroundStyle(item.isChecked ? KitchenTheme.textTertiary : KitchenTheme.textSecondary)
+                    Spacer(minLength: 0)
                 }
+                .foregroundStyle(item.isChecked ? KitchenTheme.textSecondary : KitchenTheme.textPrimary)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
             }
-
-            Spacer()
-
-            CategoryTag(
-                title: item.category,
-                tint: KitchenTheme.brandCrimson.opacity(0.08),
-                textColor: KitchenTheme.brandCrimson
-            )
-        }
-        .padding(.vertical, 6)
-        .swipeActions(edge: .trailing) {
-            Button(role: .destructive, action: onDelete) {
-                Label("删除", systemImage: "trash")
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(item.name)，\(item.quantity)\(item.unit)")
+            .accessibilityValue(item.isChecked ? "已勾选" : "未勾选")
+            Menu {
+                if let onAssign {
+                    Menu("购物日") {
+                        Button("未分配") { onAssign("") }
+                        ForEach(shopDays, id: \.self) { day in
+                            Button(day == DateHelper.todayKey ? "今天" : day) { onAssign(day) }
+                        }
+                    }
+                }
+                Button("删除", role: .destructive, action: onDelete)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
+            .accessibilityLabel("\(item.name)的操作")
         }
+        .padding(.vertical, 8)
         .sensoryFeedback(.selection, trigger: item.isChecked)
     }
 }

@@ -6,14 +6,25 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		14CE95712F6E24F400B8CFFC /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 14CE95702F6E24F400B8CFFC /* XCTest.framework */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		14CE956C2F6E24F400B8CFFC /* Kitchen Manager.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Kitchen Manager.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		14CE95702F6E24F400B8CFFC /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
+		14CE95872F6E24F400B8CFFC /* Kitchen ManagerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Kitchen ManagerTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		14CE956E2F6E24F400B8CFFC /* Kitchen Manager */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = "Kitchen Manager";
+			sourceTree = "<group>";
+		};
+		14CE95862F6E24F400B8CFFC /* Kitchen ManagerTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Kitchen ManagerTests";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -26,6 +37,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		14CE95722F6E24F400B8CFFC /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				14CE95712F6E24F400B8CFFC /* XCTest.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -33,6 +52,7 @@
 			isa = PBXGroup;
 			children = (
 				14CE956E2F6E24F400B8CFFC /* Kitchen Manager */,
+				14CE95862F6E24F400B8CFFC /* Kitchen ManagerTests */,
 				14CE956D2F6E24F400B8CFFC /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,11 +61,22 @@
 			isa = PBXGroup;
 			children = (
 				14CE956C2F6E24F400B8CFFC /* Kitchen Manager.app */,
+				14CE95872F6E24F400B8CFFC /* Kitchen ManagerTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
+
+/* Begin PBXContainerItemProxy section */
+		14CE95812F6E24F400B8CFFC /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 14CE95642F6E24F400B8CFFC /* Project object */;
+			proxyType = 1;
+			remoteGlobalID = 14CE956B2F6E24F400B8CFFC;
+			remoteInfo = "Kitchen Manager";
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXNativeTarget section */
 		14CE956B2F6E24F400B8CFFC /* Kitchen Manager */ = {
@@ -70,7 +101,38 @@
 			productReference = 14CE956C2F6E24F400B8CFFC /* Kitchen Manager.app */;
 			productType = "com.apple.product-type.application";
 		};
+		14CE95802F6E24F400B8CFFC /* Kitchen ManagerTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 14CE95852F6E24F400B8CFFC /* Build configuration list for PBXNativeTarget "Kitchen ManagerTests" */;
+			buildPhases = (
+				14CE95732F6E24F400B8CFFC /* Sources */,
+				14CE95722F6E24F400B8CFFC /* Frameworks */,
+				14CE95742F6E24F400B8CFFC /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				14CE95822F6E24F400B8CFFC /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				14CE95862F6E24F400B8CFFC /* Kitchen ManagerTests */,
+			);
+			name = "Kitchen ManagerTests";
+			packageProductDependencies = (
+			);
+			productName = "Kitchen ManagerTests";
+			productReference = 14CE95872F6E24F400B8CFFC /* Kitchen ManagerTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
+
+/* Begin PBXTargetDependency section */
+		14CE95822F6E24F400B8CFFC /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 14CE956B2F6E24F400B8CFFC /* Kitchen Manager */;
+			targetProxy = 14CE95812F6E24F400B8CFFC /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXProject section */
 		14CE95642F6E24F400B8CFFC /* Project object */ = {
@@ -82,6 +144,10 @@
 				TargetAttributes = {
 					14CE956B2F6E24F400B8CFFC = {
 						CreatedOnToolsVersion = 26.3;
+					};
+					14CE95802F6E24F400B8CFFC = {
+						CreatedOnToolsVersion = 26.3;
+						TestTargetID = 14CE956B2F6E24F400B8CFFC;
 					};
 				};
 			};
@@ -100,6 +166,7 @@
 			projectRoot = "";
 			targets = (
 				14CE956B2F6E24F400B8CFFC /* Kitchen Manager */,
+				14CE95802F6E24F400B8CFFC /* Kitchen ManagerTests */,
 			);
 		};
 /* End PBXProject section */
@@ -112,10 +179,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		14CE95742F6E24F400B8CFFC /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		14CE95682F6E24F400B8CFFC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		14CE95732F6E24F400B8CFFC /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -310,6 +391,54 @@
 			};
 			name = Release;
 		};
+		14CE95832F6E24F400B8CFFC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = TU2V4U9RW6;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "xzou.Kitchen-ManagerTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Kitchen Manager.app/Kitchen Manager";
+			};
+			name = Debug;
+		};
+		14CE95842F6E24F400B8CFFC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = TU2V4U9RW6;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "xzou.Kitchen-ManagerTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Kitchen Manager.app/Kitchen Manager";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -327,6 +456,15 @@
 			buildConfigurations = (
 				14CE95782F6E24F600B8CFFC /* Debug */,
 				14CE95792F6E24F600B8CFFC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		14CE95852F6E24F400B8CFFC /* Build configuration list for PBXNativeTarget "Kitchen ManagerTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				14CE95832F6E24F400B8CFFC /* Debug */,
+				14CE95842F6E24F400B8CFFC /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

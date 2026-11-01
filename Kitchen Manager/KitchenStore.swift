@@ -4,27 +4,34 @@ import Security
 @Observable
 final class KitchenStore {
     var inventoryItems: [InventoryItem] = [] {
-        didSet { scheduleSave() }
+        didSet { scheduleSaveIfNeeded() }
     }
     
     var shoppingState: ShoppingState = ShoppingState() {
-        didSet { scheduleSave() }
+        didSet { scheduleSaveIfNeeded() }
     }
     
     var mealPlans: [String: [MealSlot: String]] = [:] {
-        didSet { scheduleSave() }
+        didSet { scheduleSaveIfNeeded() }
+    }
+
+    /// Ingredients captured from an AI recipe for each planned meal.
+    /// Manual meal entries have no ingredient association and are left empty.
+    var mealIngredients: [String: [MealSlot: [MealIngredient]]] = [:] {
+        didSet { scheduleSaveIfNeeded() }
     }
     
     var budgetState: BudgetState = BudgetState() {
-        didSet { scheduleSave() }
+        didSet { scheduleSaveIfNeeded() }
     }
 
     var hydrationState: HydrationState = HydrationState() {
-        didSet { scheduleSave() }
+        didSet { scheduleSaveIfNeeded() }
     }
     
     var aiApiKey: String = "" {
         didSet {
+            guard !isLoading, persistenceEnabled else { return }
             if !KeychainSecretStore.saveAPIKey(aiApiKey) {
                 print("Failed to save AI API key to Keychain.")
             }
@@ -32,11 +39,11 @@ final class KitchenStore {
     }
     
     var aiBaseURL: String = "https://api.openai.com/v1" {
-        didSet { scheduleSave() }
+        didSet { scheduleSaveIfNeeded() }
     }
     
     var aiModel: String = "gpt-4o-mini" {
-        didSet { scheduleSave() }
+        didSet { scheduleSaveIfNeeded() }
     }
     
     var toastMessage: String?
@@ -55,9 +62,9 @@ final class KitchenStore {
         shoppingState.items.filter { !$0.isChecked }.count
     }
 
+    // Checked rows remain committed spending until checkout removes them.
     var pendingShoppingEstimate: Double {
         shoppingState.items
-            .filter { !$0.isChecked }
             .reduce(0) { $0 + $1.estimatedTotalCost }
     }
 
@@ -86,7 +93,9 @@ final class KitchenStore {
     }
 
     private var saveTask: Task<Void, Never>?
+    private let persistenceEnabled: Bool
     private let fileURL: URL
+    private var isLoading = false
 
     private struct PurchaseBucket {
         let name: String
@@ -96,10 +105,13 @@ final class KitchenStore {
         let quantity: Double
     }
 
-    init() {
+    init(inMemory: Bool = false) {
+        self.persistenceEnabled = !inMemory
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         self.fileURL = docs.appendingPathComponent("kitchen_data.json")
-        load()
+        self.isLoading = true
+        if !inMemory { load() }
+        self.isLoading = false
     }
     
     func showToast(_ message: String, kind: ToastKind = .info) {
@@ -116,13 +128,51 @@ final class KitchenStore {
         }
     }
 
-    func assignMeal(_ dish: String, dateKey: String, slot: MealSlot) {
+    func assignMeal(
+        _ dish: String,
+        dateKey: String,
+        slot: MealSlot,
+        ingredients: [RecipeIngredient] = []
+    ) {
         let title = dish.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return }
 
         var day = mealPlans[dateKey] ?? [:]
         day[slot] = title
         mealPlans[dateKey] = day
+
+        var recipesForDay = mealIngredients[dateKey] ?? [:]
+        if ingredients.isEmpty {
+            recipesForDay.removeValue(forKey: slot)
+        } else {
+            recipesForDay[slot] = ingredients.map {
+                MealIngredient(name: $0.name, quantity: $0.quantity, unit: $0.unit)
+            }
+        }
+        if recipesForDay.isEmpty {
+            mealIngredients.removeValue(forKey: dateKey)
+        } else {
+            mealIngredients[dateKey] = recipesForDay
+        }
+    }
+
+    func updateMeal(_ value: String, dateKey: String, slot: MealSlot) {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        var day = mealPlans[dateKey] ?? [:]
+        if trimmed.isEmpty { day.removeValue(forKey: slot) }
+        else { day[slot] = trimmed }
+        mealPlans[dateKey] = day
+        clearMealIngredients(dateKey: dateKey, slot: slot)
+    }
+
+    func clearMealIngredients(dateKey: String, slot: MealSlot) {
+        guard var recipesForDay = mealIngredients[dateKey] else { return }
+        recipesForDay.removeValue(forKey: slot)
+        if recipesForDay.isEmpty {
+            mealIngredients.removeValue(forKey: dateKey)
+        } else {
+            mealIngredients[dateKey] = recipesForDay
+        }
     }
 
     func addHydration(amountML: Int = 250, drinkName: String = "水", dateKey: String = DateHelper.todayKey) {
@@ -255,21 +305,46 @@ final class KitchenStore {
         }
     }
 
-    /// When a meal is marked as eaten, deduct recipe ingredients from inventory
-    func completeMeal(dateKey: String, slot: MealSlot) {
-        guard let meals = mealPlans[dateKey], let dish = meals[slot], !dish.isEmpty else { return }
+    /// When a meal is marked as eaten, deduct its saved recipe ingredients from inventory.
+    @discardableResult
+    func completeMeal(dateKey: String, slot: MealSlot) -> Bool {
+        guard let meals = mealPlans[dateKey], let dish = meals[slot], !dish.isEmpty else { return false }
 
-        // Mark as completed by prefixing with ✅
-        guard !dish.hasPrefix("✅") else { return }
+        guard !dish.hasPrefix("✅") else { return false }
+        var didDeductIngredients = false
+
+        if let ingredients = mealIngredients[dateKey]?[slot] {
+            for ingredient in ingredients where ingredient.quantity > 0 {
+                let category = KitchenData.categoryGuess(for: ingredient.name)
+                let unitPrice = KitchenData.estimatedUnitPrice(
+                    for: ingredient.name,
+                    category: category,
+                    unit: ingredient.unit
+                )
+                didDeductIngredients = adjustInventory(
+                    using: PurchaseBucket(
+                        name: ingredient.name,
+                        unit: ingredient.unit,
+                        category: category,
+                        unitPrice: unitPrice,
+                        quantity: 0
+                    ),
+                    deltaQuantity: -ingredient.quantity
+                ) || didDeductIngredients
+            }
+        }
+
         var day = mealPlans[dateKey] ?? [:]
         day[slot] = "✅ " + dish
         mealPlans[dateKey] = day
+        return didDeductIngredients
     }
 
     /// Checkout: finalize a shopping trip with editable line items, sync to inventory & budget
-    func checkoutShoppingTrip(lineItems: [PurchaseLineItem]) {
+    @discardableResult
+    func checkoutShoppingTrip(lineItems: [PurchaseLineItem]) -> Bool {
         let normalizedItems = normalizedPurchaseLineItems(lineItems)
-        guard !normalizedItems.isEmpty else { return }
+        guard !normalizedItems.isEmpty else { return false }
 
         let record = PurchaseRecord(
             id: UUID(),
@@ -281,8 +356,10 @@ final class KitchenStore {
         upsertPurchaseTransaction(for: record)
         syncInventoryForPurchaseChange(from: [], to: record.items)
 
-        // Remove checked items from shopping list after checkout succeeds.
-        shoppingState.items.removeAll { $0.isChecked }
+        // Remove only the checked source rows that were actually included in the checkout.
+        let settledShoppingIDs = Set(normalizedItems.compactMap(\.shoppingItemID))
+        shoppingState.items.removeAll { settledShoppingIDs.contains($0.id) }
+        return true
     }
 
     @discardableResult
@@ -328,11 +405,17 @@ final class KitchenStore {
         }
     }
 
+    private func scheduleSaveIfNeeded() {
+        guard !isLoading, persistenceEnabled else { return }
+        scheduleSave()
+    }
+
     private func save() {
         let dataToSave = SerializedData(
             inventoryItems: inventoryItems,
             shoppingState: shoppingState,
             mealPlans: mealPlans,
+            mealIngredients: mealIngredients,
             budgetState: budgetState,
             hydrationState: hydrationState,
             aiBaseURL: aiBaseURL,
@@ -340,7 +423,7 @@ final class KitchenStore {
         )
         do {
             let data = try JSONEncoder().encode(dataToSave)
-            try data.write(to: fileURL)
+            try data.write(to: fileURL, options: [.atomic])
         } catch {
             print("Failed to save data: \(error)")
         }
@@ -349,32 +432,18 @@ final class KitchenStore {
     private func load() {
         aiApiKey = KeychainSecretStore.apiKey()
 
-        guard let data = try? Data(contentsOf: fileURL) else {
-            // 第一次启动，加载示例数据
-            inventoryItems = InventoryItem.samples
-            shoppingState = ShoppingState.samples
-            budgetState = BudgetState.sample
-            hydrationState = HydrationState.sample
-            mealPlans = [
-                DateHelper.todayKey: [
-                    .breakfast: "燕麦牛奶杯",
-                    .lunch: "番茄鸡胸肉意面",
-                    .dinner: "菌菇豆腐汤",
-                    .drinks: "柠檬红茶"
-                ],
-                DateHelper.key(for: Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()): [
-                    .breakfast: "鸡蛋三明治",
-                    .dinner: "番茄炒蛋"
-                ]
-            ]
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            loadSampleData()
             return
         }
 
         do {
+            let data = try Data(contentsOf: fileURL)
             let savedData = try JSONDecoder().decode(SerializedData.self, from: data)
             inventoryItems = savedData.inventoryItems
             shoppingState = savedData.shoppingState
             mealPlans = savedData.mealPlans
+            mealIngredients = savedData.mealIngredients
             budgetState = savedData.budgetState
             hydrationState = savedData.hydrationState ?? HydrationState()
             migratePurchaseTransactionsIfNeeded()
@@ -387,7 +456,42 @@ final class KitchenStore {
             aiBaseURL = savedData.aiBaseURL ?? "https://api.openai.com/v1"
             aiModel = savedData.aiModel ?? "gpt-4o-mini"
         } catch {
-            print("Failed to load data: \(error)")
+            preserveCorruptData()
+            print("Failed to load data; preserved the unreadable file and loaded sample data: \(error)")
+            loadSampleData()
+        }
+    }
+
+    private func loadSampleData() {
+        inventoryItems = InventoryItem.samples
+        shoppingState = ShoppingState.samples
+        mealPlans = [
+            DateHelper.todayKey: [
+                .breakfast: "燕麦牛奶杯",
+                .lunch: "番茄鸡胸肉意面",
+                .dinner: "菌菇豆腐汤",
+                .drinks: "柠檬红茶"
+            ],
+            DateHelper.key(for: Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()): [
+                .breakfast: "鸡蛋三明治",
+                .dinner: "番茄炒蛋"
+            ]
+        ]
+        mealIngredients = [:]
+        budgetState = BudgetState.sample
+        hydrationState = HydrationState.sample
+        aiBaseURL = "https://api.openai.com/v1"
+        aiModel = "gpt-4o-mini"
+    }
+
+    private func preserveCorruptData() {
+        let timestamp = String(Int(Date().timeIntervalSince1970))
+        let backupURL = fileURL.deletingLastPathComponent()
+            .appendingPathComponent("kitchen_data.corrupt-\(timestamp).json")
+        do {
+            try FileManager.default.copyItem(at: fileURL, to: backupURL)
+        } catch {
+            print("Failed to preserve corrupt data: \(error)")
         }
     }
 
@@ -407,6 +511,7 @@ final class KitchenStore {
 
             return PurchaseLineItem(
                 id: item.id,
+                shoppingItemID: item.shoppingItemID,
                 name: name,
                 quantity: quantity.cleanString,
                 unit: resolvedUnit,
@@ -460,8 +565,9 @@ final class KitchenStore {
         return "\(normalizedName)|\(normalizedUnit)"
     }
 
-    private func adjustInventory(using bucket: PurchaseBucket, deltaQuantity: Double) {
-        guard !bucket.name.isEmpty else { return }
+    @discardableResult
+    private func adjustInventory(using bucket: PurchaseBucket, deltaQuantity: Double) -> Bool {
+        guard !bucket.name.isEmpty else { return false }
 
         if let index = inventoryItems.firstIndex(where: {
             KitchenData.isLikelySameIngredient($0.name, bucket.name) && $0.unit == bucket.unit
@@ -471,7 +577,7 @@ final class KitchenStore {
 
             if next <= 0 {
                 inventoryItems.remove(at: index)
-                return
+                return true
             }
 
             inventoryItems[index].quantity = next.cleanString
@@ -481,6 +587,7 @@ final class KitchenStore {
             if bucket.unitPrice > 0 {
                 inventoryItems[index].unitPrice = bucket.unitPrice
             }
+            return true
         } else if deltaQuantity > 0 {
             let category = bucket.category == "其他" ? KitchenData.categoryGuess(for: bucket.name) : bucket.category
             let freshness = KitchenData.defaultFreshness[category] ?? 0
@@ -498,7 +605,10 @@ final class KitchenStore {
                     usageSuggestion: InventoryRecommendation.suggestion(for: bucket.name, category: category)
                 )
             )
+            return true
         }
+
+        return false
     }
 
     private func updateInventoryMetadata(using bucket: PurchaseBucket) {
@@ -607,6 +717,7 @@ final class KitchenStore {
         let inventoryItems: [InventoryItem]
         let shoppingState: ShoppingState
         let mealPlans: [String: [MealSlot: String]]
+        let mealIngredients: [String: [MealSlot: [MealIngredient]]]
         let budgetState: BudgetState
         var hydrationState: HydrationState?
         var legacyAiApiKey: String?
@@ -617,6 +728,7 @@ final class KitchenStore {
             case inventoryItems
             case shoppingState
             case mealPlans
+            case mealIngredients
             case budgetState
             case hydrationState
             case legacyAiApiKey = "aiApiKey"
@@ -628,6 +740,7 @@ final class KitchenStore {
             inventoryItems: [InventoryItem],
             shoppingState: ShoppingState,
             mealPlans: [String: [MealSlot: String]],
+            mealIngredients: [String: [MealSlot: [MealIngredient]]],
             budgetState: BudgetState,
             hydrationState: HydrationState?,
             aiBaseURL: String?,
@@ -636,6 +749,7 @@ final class KitchenStore {
             self.inventoryItems = inventoryItems
             self.shoppingState = shoppingState
             self.mealPlans = mealPlans
+            self.mealIngredients = mealIngredients
             self.budgetState = budgetState
             self.hydrationState = hydrationState
             self.legacyAiApiKey = nil
@@ -648,6 +762,10 @@ final class KitchenStore {
             inventoryItems = try container.decode([InventoryItem].self, forKey: .inventoryItems)
             shoppingState = try container.decode(ShoppingState.self, forKey: .shoppingState)
             mealPlans = try container.decode([String: [MealSlot: String]].self, forKey: .mealPlans)
+            mealIngredients = try container.decodeIfPresent(
+                [String: [MealSlot: [MealIngredient]]].self,
+                forKey: .mealIngredients
+            ) ?? [:]
             budgetState = try container.decode(BudgetState.self, forKey: .budgetState)
             hydrationState = try container.decodeIfPresent(HydrationState.self, forKey: .hydrationState)
             legacyAiApiKey = try container.decodeIfPresent(String.self, forKey: .legacyAiApiKey)
@@ -660,6 +778,7 @@ final class KitchenStore {
             try container.encode(inventoryItems, forKey: .inventoryItems)
             try container.encode(shoppingState, forKey: .shoppingState)
             try container.encode(mealPlans, forKey: .mealPlans)
+            try container.encode(mealIngredients, forKey: .mealIngredients)
             try container.encode(budgetState, forKey: .budgetState)
             try container.encodeIfPresent(hydrationState, forKey: .hydrationState)
             try container.encodeIfPresent(aiBaseURL, forKey: .aiBaseURL)

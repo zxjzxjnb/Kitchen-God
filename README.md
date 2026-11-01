@@ -25,6 +25,7 @@ The app includes an AI cooking assistant named Zao Wangye. It can generate recip
 - **Inventory alerts**: `AlertEngine`
 - **Local data rules**: `KitchenData` for ingredient categories, unit guesses, name normalization, and estimated prices
 - **Secret storage**: API keys are stored in the system Keychain instead of the app's JSON state file
+- **Regression tests**: `KitchenManagerTests` XCTest target for core inventory, checkout, meal, and date rules
 
 ## Architecture
 
@@ -45,6 +46,7 @@ The app centers on `KitchenStore`, which coordinates the main product flows:
 Kitchen Manager/
 ├── README.md
 ├── Kitchen Manager.xcodeproj/
+├── Kitchen ManagerTests/
 └── Kitchen Manager/
     ├── Kitchen_ManagerApp.swift
     ├── ContentView.swift
@@ -91,6 +93,8 @@ On first launch, the app loads sample inventory, shopping, meal planning, and bu
 
 The saved state includes inventory items, shopping list state, weekly meal plans, budget records, hydration records, and non-secret AI settings. API keys are not written to this JSON file.
 
+Unreadable saved data is preserved as a timestamped `kitchen_data.corrupt-*.json` backup before the app falls back to sample data. Writes use atomic replacement.
+
 ## Project Status
 
-Kitchen Manager is an end-to-end iOS prototype rather than a static UI mock. It includes real local state management, cross-feature synchronization, budget and inventory logic, and configurable AI recipe generation. The most valuable next engineering step would be focused unit tests for the business logic in `AlertEngine`, `KitchenData`, and `KitchenStore`.
+Kitchen Manager is an end-to-end iOS prototype rather than a static UI mock. It includes real local state management, cross-feature synchronization, budget and inventory logic, configurable AI recipe generation, and focused XCTest coverage for the core business rules.

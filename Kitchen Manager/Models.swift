@@ -121,6 +121,17 @@ struct ShoppingState: Codable {
         fixedShopWeekdays = try container.decodeIfPresent(Set<Int>.self, forKey: .fixedShopWeekdays) ?? []
     }
 
+    /// Group every saved item independently of the shopping schedule.
+    func itemGroups(category: String = "全部") -> [ShoppingDayGroup] {
+        let visible = items.filter { category == "全部" || $0.category == category }
+        let grouped = Dictionary(grouping: visible, by: \.day)
+        return grouped.keys.sorted {
+            if $0.isEmpty { return false }
+            if $1.isEmpty { return true }
+            return $0 < $1
+        }.map { ShoppingDayGroup(day: $0, items: grouped[$0] ?? []) }
+    }
+
     /// Merge fixed weekdays (for this week) with manually selected shopDays
     func resolvedShopDays(for weekDates: [Date]) -> [String] {
         var result = Set(shopDays)
@@ -133,6 +144,19 @@ struct ShoppingState: Codable {
             }
         }
         return result.sorted()
+    }
+}
+
+struct ShoppingDayGroup: Identifiable {
+    let day: String
+    let items: [ShoppingItem]
+    var id: String { day }
+
+    func title(today: String = DateHelper.todayKey) -> String {
+        if day.isEmpty { return "未分配" }
+        if day == today { return "今天" }
+        if day < today && items.contains(where: { !$0.isChecked }) { return "逾期 · \(day)" }
+        return day
     }
 }
 
@@ -303,14 +327,26 @@ struct PurchaseRecord: Identifiable, Codable {
 
 struct PurchaseLineItem: Identifiable, Codable {
     let id: UUID
+    /// The checked shopping-list item that produced this line, when checkout is opened from the list.
+    /// Kept optional so older purchase records remain decodable.
+    let shoppingItemID: UUID?
     var name: String
     var quantity: String
     var unit: String
     var unitPrice: Double
     var category: String
 
-    init(id: UUID = UUID(), name: String, quantity: String, unit: String, unitPrice: Double, category: String) {
+    init(
+        id: UUID = UUID(),
+        shoppingItemID: UUID? = nil,
+        name: String,
+        quantity: String,
+        unit: String,
+        unitPrice: Double,
+        category: String
+    ) {
         self.id = id
+        self.shoppingItemID = shoppingItemID
         self.name = name
         self.quantity = quantity
         self.unit = unit
@@ -324,6 +360,18 @@ struct PurchaseLineItem: Identifiable, Codable {
 
     var totalCost: Double {
         quantityValue * unitPrice
+    }
+}
+
+struct MealIngredient: Codable, Hashable {
+    let name: String
+    let quantity: Double
+    let unit: String
+
+    init(name: String, quantity: Double, unit: String) {
+        self.name = name
+        self.quantity = quantity
+        self.unit = unit
     }
 }
 
@@ -452,7 +500,7 @@ struct AlertBundle {
     var notFresh: [AlertItem]
 
     var totalCount: Int {
-        expired.count + expiringSoon.count + lowStock.count + notFresh.count
+        Set((expired + expiringSoon + lowStock + notFresh).map(\.id)).count
     }
 }
 

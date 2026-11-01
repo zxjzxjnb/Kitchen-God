@@ -6,6 +6,7 @@ struct MealPlanPage: View {
     @State private var weekStart = DateHelper.weekStart(for: Date())
     @State private var focusedDateKey = DateHelper.todayKey
     @State private var editingCell: MealCellEditingState?
+    @State private var showingAssistant = false
 
     private var weekDates: [Date] { DateHelper.weekDates(from: weekStart) }
 
@@ -14,71 +15,56 @@ struct MealPlanPage: View {
         return "\(DateHelper.monthDayString(weekStart)) – \(DateHelper.monthDayString(last))"
     }
 
-    private var plannedCount: Int {
-        weekDates.reduce(0) { total, date in
-            let meals = store.mealPlans[DateHelper.key(for: date)] ?? [:]
-            return total + meals.values.filter { !$0.isEmpty }.count
-        }
-    }
-
     private var focusedDate: Date { DateHelper.date(from: focusedDateKey) ?? weekStart }
 
     private var focusedMeals: [MealSlot: String] { store.mealPlans[focusedDateKey] ?? [:] }
-
-    private var focusedMealCount: Int { focusedMeals.values.filter { !$0.isEmpty }.count }
-
-    private var isCurrentWeek: Bool {
-        Calendar.current.isDate(weekStart, inSameDayAs: DateHelper.weekStart(for: Date()))
-    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    AIChefPanel(planDate: $focusedDateKey, weekDates: weekDates)
-
                     // ── Week Planner Card ───────────────────────────────
                     VStack(alignment: .leading, spacing: 0) {
 
                         // Header
                         HStack(alignment: .center) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("本周安排")
-                                    .font(.headline)
                                 Text(weekLabel)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .font(.headline)
                             }
 
                             Spacer()
 
                             HStack(spacing: 6) {
-                                if !isCurrentWeek {
+                                if focusedDateKey != DateHelper.todayKey {
                                     Button("今天") { showCurrentWeek() }
                                         .font(.caption.weight(.semibold))
-                                        .foregroundStyle(KitchenTheme.brandCrimson)
+                                        .foregroundStyle(KitchenTheme.brandForeground)
                                         .padding(.horizontal, 10)
                                         .padding(.vertical, 5)
                                         .background(KitchenTheme.brandCrimson.opacity(0.08), in: Capsule())
+                                        .frame(minHeight: 44)
                                 }
 
                                 Button { moveWeek(by: -7) } label: {
                                     Image(systemName: "chevron.left")
                                         .font(.caption.weight(.bold))
                                         .foregroundStyle(.secondary)
+                                        .frame(width: 44, height: 44)
+                                        .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
-                                .frame(width: 30, height: 30)
-                                .background(Color(.tertiarySystemFill), in: Circle())
+                                .accessibilityLabel("上一周")
 
                                 Button { moveWeek(by: 7) } label: {
                                     Image(systemName: "chevron.right")
                                         .font(.caption.weight(.bold))
                                         .foregroundStyle(.secondary)
+                                        .frame(width: 44, height: 44)
+                                        .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
-                                .frame(width: 30, height: 30)
-                                .background(Color(.tertiarySystemFill), in: Circle())
+                                .accessibilityLabel("下一周")
                             }
                         }
                         .padding(16)
@@ -120,14 +106,7 @@ struct MealPlanPage: View {
 
                                 Spacer()
 
-                                if focusedMealCount > 0 {
-                                    Text("\(focusedMealCount)/\(MealSlot.allCases.count) 项已安排")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(KitchenTheme.brandCrimson)
-                                        .padding(.horizontal, 9)
-                                        .padding(.vertical, 4)
-                                        .background(KitchenTheme.brandCrimson.opacity(0.08), in: Capsule())
-                                }
+
                             }
 
                             VStack(spacing: 8) {
@@ -144,8 +123,11 @@ struct MealPlanPage: View {
                                             )
                                         },
                                         onComplete: {
-                                            store.completeMeal(dateKey: focusedDateKey, slot: slot)
-                                            store.showToast("好,这顿\(slot.title)吃完了。", kind: .success)
+                                            let deducted = store.completeMeal(dateKey: focusedDateKey, slot: slot)
+                                            store.showToast(
+                                                deducted ? "好,这顿\(slot.title)吃完了,库存也更新了。" : "这顿\(slot.title)记下了；没有可扣减的库存。",
+                                                kind: deducted ? .success : .warning
+                                            )
                                         }
                                     )
                                 }
@@ -154,40 +136,17 @@ struct MealPlanPage: View {
                         .padding(16)
                     }
                     .background(KitchenTheme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+                    AssistantEntryButton { showingAssistant = true }
                 }
                 .padding(.horizontal)
                 .padding(.vertical, 8)
             }
             .background(KitchenTheme.background)
             .navigationTitle("菜单")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    KitchenBrandMark()
-                }
-            }
             .onAppear { syncFocusedDateIfNeeded() }
-            .sheet(item: $editingCell) { cell in
-                MealEditSheet(
-                    state: cell,
-                    onSave: { updatedValue in
-                        var day = store.mealPlans[cell.dateKey] ?? [:]
-                        let trimmed = updatedValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if trimmed.isEmpty {
-                            day.removeValue(forKey: cell.mealSlot)
-                        } else {
-                            day[cell.mealSlot] = trimmed
-                        }
-                        store.mealPlans[cell.dateKey] = day
-                        store.showToast("已更新 \(cell.dateKey) \(cell.mealSlot.title)")
-                    },
-                    onDelete: {
-                        var day = store.mealPlans[cell.dateKey] ?? [:]
-                        day.removeValue(forKey: cell.mealSlot)
-                        store.mealPlans[cell.dateKey] = day
-                        store.showToast("已清除安排")
-                    }
-                )
-            }
+            .sheet(item: $editingCell) { cell in PlannedMealEditor(state: cell) }
+            .sheet(isPresented: $showingAssistant) { ChefSheet(dateKey: focusedDateKey) }
         }
     }
 
@@ -209,6 +168,73 @@ struct MealPlanPage: View {
     }
 }
 
+struct PlannedMealEditor: View {
+    @Environment(KitchenStore.self) private var store
+    let state: MealCellEditingState
+
+    var body: some View {
+        MealEditSheet(state: state, onSave: { value in
+            store.updateMeal(value, dateKey: state.dateKey, slot: state.mealSlot)
+            store.showToast("已保存")
+        }, onDelete: {
+            store.updateMeal("", dateKey: state.dateKey, slot: state.mealSlot)
+            store.showToast("已清除安排")
+        })
+    }
+}
+
+struct AssistantEntryButton: View {
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image("ZaoWangyeHero")
+                    .resizable().scaledToFill()
+                    .frame(width: 40, height: 40).clipShape(Circle())
+                    .accessibilityHidden(true)
+                Text("问问灶王爷").font(.headline)
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption.weight(.semibold))
+            }
+            .padding(16)
+            .foregroundStyle(KitchenTheme.brandForeground)
+            .background(KitchenTheme.brandCream, in: RoundedRectangle(cornerRadius: KitchenTheme.Radius.md))
+        }
+        .buttonStyle(KitchenPressStyle())
+    }
+}
+
+struct ChefSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var dateKey: String
+    @State private var showingSettings = false
+
+    init(dateKey: String) { _dateKey = State(initialValue: dateKey) }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                AIChefPanel(planDate: $dateKey,
+                            weekDates: DateHelper.weekDates(from: DateHelper.weekStart(for: DateHelper.date(from: dateKey) ?? Date())))
+                    .padding()
+            }
+            .background(KitchenTheme.background)
+            .navigationTitle("灶王爷")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("完成") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showingSettings = true } label: { Image(systemName: "gearshape") }
+                        .accessibilityLabel("助手设置")
+                }
+            }
+            .sheet(isPresented: $showingSettings) { SettingsSheet() }
+        }
+    }
+}
+
 // MARK: - Week Day Pill
 
 private struct WeekDayPill: View {
@@ -222,11 +248,7 @@ private struct WeekDayPill: View {
         "\(Calendar.current.component(.day, from: date))"
     }
 
-    private var weekdayLetter: String {
-        let f = DateFormatter()
-        f.dateFormat = "EEEEE"
-        return f.string(from: date)
-    }
+    private var weekdayLetter: String { DateHelper.weekdayName(for: date) }
 
     var body: some View {
         Button(action: action) {
@@ -254,6 +276,9 @@ private struct WeekDayPill: View {
             )
         }
         .buttonStyle(KitchenPressStyle())
+        .accessibilityLabel("\(DateHelper.monthDayString(date)) \(DateHelper.weekdayName(for: date))")
+        .accessibilityValue("\(mealCount) 项安排")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private var dotColor: Color {
@@ -304,42 +329,12 @@ struct AIChefPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header strip — cream paper with brand mark + mode toggle
-            HStack(spacing: KitchenTheme.Spacing.md) {
-                Image("ZaoWangyeHero")
-                    .resizable()
-                    .interpolation(.high)
-                    .scaledToFill()
-                    .frame(width: 48, height: 48)
-                    .clipShape(Circle())
-                    .overlay(
-                        Circle().strokeBorder(KitchenTheme.brandGold.opacity(0.85), lineWidth: 1.5)
-                    )
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(mode == .suggest ? "库存优先" : "手动点菜")
-                        .font(KitchenType.eyebrow)
-                        .kerning(0.5)
-                        .foregroundStyle(KitchenTheme.brandCrimson)
-                    Text("灶王爷")
-                        .font(.title3.weight(.bold))
-                        .foregroundStyle(KitchenTheme.textPrimary)
-                }
-
-                Spacer(minLength: KitchenTheme.Spacing.sm)
-
-                AIChefModeSwitch(selection: $mode)
-                    .frame(maxWidth: 148)
+            Picker("方式", selection: $mode) {
+                Text("推荐").tag(AIChefMode.suggest)
+                Text("点菜").tag(AIChefMode.input)
             }
-            .padding(.horizontal, KitchenTheme.Spacing.lg)
-            .padding(.vertical, KitchenTheme.Spacing.md + 2)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(KitchenTheme.brandCream)
-
-            // Subtle divider
-            Rectangle()
-                .fill(KitchenTheme.brandGold.opacity(0.30))
-                .frame(height: 0.5)
+            .pickerStyle(.segmented)
+            .padding(16)
 
             // Content area on neutral surface
             VStack(alignment: .leading, spacing: KitchenTheme.Spacing.md) {
@@ -393,7 +388,7 @@ struct AIChefPanel: View {
                 planDate: $planDate,
                 planMeal: $planMeal,
                 weekDates: weekDates,
-                onAssign: { assignMeal(recipeResult.dish) },
+                onAssign: { assignMeal(recipeResult.dish, ingredients: recipeResult.ingredients) },
                 onAddToShopping: { addMissingIngredients(recipeResult.ingredients) },
                 onAutoPilot: { autoArrangeMeal(recipeResult.dish, ingredients: recipeResult.ingredients) }
             )
@@ -414,8 +409,11 @@ struct AIChefPanel: View {
                     Image(systemName: "arrow.clockwise")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(KitchenTheme.textSecondary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(KitchenPressStyle())
+                .accessibilityLabel("刷新推荐")
             }
         }
 
@@ -435,7 +433,7 @@ struct AIChefPanel: View {
                 planDate: $planDate,
                 planMeal: $planMeal,
                 weekDates: weekDates,
-                onAssign: { assignMeal(suggestion.dish) },
+                onAssign: { assignMeal(suggestion.dish, ingredients: suggestion.ingredients) },
                 onAutoArrange: { autoArrangeMeal(suggestion.dish, ingredients: suggestion.ingredients) },
                 onAddToShopping: { addMissingIngredients(suggestion.missingIngredients) }
             )
@@ -488,10 +486,10 @@ struct AIChefPanel: View {
         }
     }
 
-    private func assignMeal(_ dish: String) {
+    private func assignMeal(_ dish: String, ingredients: [RecipeIngredient] = []) {
         let title = dish.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return }
-        store.assignMeal(title, dateKey: planDate, slot: planMeal)
+        store.assignMeal(title, dateKey: planDate, slot: planMeal, ingredients: ingredients)
         store.showToast("「\(title)」我记上了。", kind: .success)
     }
 
@@ -509,7 +507,7 @@ struct AIChefPanel: View {
     private func autoArrangeMeal(_ dish: String, ingredients: [RecipeIngredient]) {
         let title = dish.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return }
-        store.assignMeal(title, dateKey: planDate, slot: planMeal)
+        store.assignMeal(title, dateKey: planDate, slot: planMeal, ingredients: ingredients)
         let shoppingDay = store.preferredShoppingDay(for: planDate)
         let summary = store.syncMissingIngredientsToShoppingList(ingredients, preferredDay: shoppingDay)
         if summary.isEmpty {
@@ -644,7 +642,7 @@ private struct SuggestionOverviewPanel: View {
             HStack(spacing: 6) {
                 Image(systemName: "sparkles")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(KitchenTheme.brandCrimson)
+                    .foregroundStyle(KitchenTheme.brandForeground)
                 Text("\(suggestions.count) 道推荐")
                     .foregroundStyle(KitchenTheme.textPrimary)
                 Text("·")
@@ -747,7 +745,7 @@ struct SuggestionCard: View {
                                     Text("\(ingredient.name) \(ingredient.purchaseQuantityText)\(ingredient.unit)")
                                         .font(.caption2.weight(.semibold))
                                 }
-                                .foregroundStyle(KitchenTheme.brandCrimson)
+                                .foregroundStyle(KitchenTheme.brandForeground)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
                                 .background(KitchenTheme.brandCrimson.opacity(0.08), in: Capsule())
@@ -801,68 +799,44 @@ private struct CompactMealSlotRow: View {
     }
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: KitchenTheme.Spacing.md) {
-                Image(systemName: isDone ? "checkmark.circle.fill" : slot.symbolName)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(isDone ? Color.white : KitchenTheme.brandCrimson)
-                    .frame(width: 36, height: 36)
-                    .background(
-                        isDone ? KitchenTheme.brandGold : KitchenTheme.brandCrimson.opacity(0.10),
-                        in: RoundedRectangle(cornerRadius: KitchenTheme.Radius.sm, style: .continuous)
-                    )
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(slot.title)
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(KitchenTheme.textSecondary)
-                    if hasValue {
-                        Text(displayValue)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(isDone ? KitchenTheme.textSecondary : KitchenTheme.textPrimary)
-                            .strikethrough(isDone, color: KitchenTheme.textSecondary)
-                            .lineLimit(1)
-                    } else {
-                        Text("点击添加")
-                            .font(.subheadline)
-                            .foregroundStyle(KitchenTheme.textTertiary)
-                    }
-                }
-
-                Spacer()
-
-                HStack(spacing: KitchenTheme.Spacing.sm + 2) {
-                    if isToday && hasValue && !isDone {
-                        Button {
-                            onComplete?()
-                        } label: {
-                            Image(systemName: "checkmark.circle")
-                                .font(.title3)
-                                .foregroundStyle(KitchenTheme.brandGold)
+        HStack(spacing: 8) {
+            Button(action: action) {
+                HStack(spacing: 12) {
+                    Image(systemName: slot.symbolName)
+                        .foregroundStyle(KitchenTheme.brandForeground)
+                        .frame(width: 28)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(slot.title).font(.caption).foregroundStyle(.secondary)
+                        if hasValue {
+                            Text(displayValue).font(.subheadline)
+                                .strikethrough(isDone)
+                                .foregroundStyle(isDone ? .secondary : .primary)
                         }
-                        .buttonStyle(KitchenPressStyle())
                     }
-
-                    Image(systemName: hasValue ? "chevron.right" : "plus")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(KitchenTheme.textTertiary)
+                    Spacer()
+                    if !hasValue { Image(systemName: "plus") }
                 }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
             }
-            .padding(.vertical, 10)
-            .padding(.horizontal, KitchenTheme.Spacing.md)
-            .background(
-                RoundedRectangle(cornerRadius: KitchenTheme.Radius.md, style: .continuous)
-                    .fill(isDone ? KitchenTheme.brandGold.opacity(0.10) : KitchenTheme.surface)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: KitchenTheme.Radius.md, style: .continuous)
-                    .strokeBorder(
-                        isDone ? KitchenTheme.brandGold.opacity(0.30) : Color.clear,
-                        lineWidth: isDone ? 1 : 0
-                    )
-            )
+            .buttonStyle(.plain)
+            .accessibilityLabel("编辑\(slot.title)\(hasValue ? "，" + displayValue : "")")
+
+            if isToday && hasValue {
+                Button { onComplete?() } label: {
+                    Image(systemName: isDone ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 22))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(isDone)
+                .accessibilityLabel("完成\(slot.title)")
+                .accessibilityValue(isDone ? "已完成" : "未完成")
+            }
         }
-        .buttonStyle(KitchenPressStyle())
+        .padding(.vertical, 4)
     }
 }
 
@@ -909,6 +883,7 @@ private struct RecipeIngredientRow: View {
 // MARK: - Meal Edit Sheet
 
 struct MealEditSheet: View {
+    @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.dismiss) private var dismiss
     let state: MealCellEditingState
     let onSave: (String) -> Void
@@ -938,7 +913,7 @@ struct MealEditSheet: View {
             HStack(spacing: 14) {
                 Image(systemName: state.mealSlot.symbolName)
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(KitchenTheme.brandCrimson)
+                    .foregroundStyle(KitchenTheme.brandForeground)
                     .frame(width: 42, height: 42)
                     .background(KitchenTheme.brandCrimson.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
@@ -958,8 +933,11 @@ struct MealEditSheet: View {
                     Image(systemName: "xmark.circle.fill")
                         .font(.title2)
                         .foregroundStyle(Color(.tertiaryLabel))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("关闭编辑")
             }
             .padding(.horizontal, 20)
 
@@ -998,7 +976,7 @@ struct MealEditSheet: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 24)
         }
-        .presentationDetents([.medium])
+        .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.medium, .large])
         .onAppear { isFieldFocused = true }
     }
 }

@@ -139,71 +139,56 @@ enum KitchenData {
 }
 
 enum DateHelper {
-    static let weekdayNames = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
-    
-    // Performance improvement: reusable date formatter
-    private static let keyFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        return f
-    }()
+    nonisolated static let weekdayNames = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
 
-    private static let mdFormatter: DateFormatter = {
+    nonisolated private static func formatter(for dateFormat: String) -> DateFormatter {
         let f = DateFormatter()
-        f.dateFormat = "M/d"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.calendar = Calendar(identifier: .gregorian)
+        f.timeZone = .current
+        f.dateFormat = dateFormat
         return f
-    }()
-    
-    private static let ymFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM"
-        return f
-    }()
-    
-    private static let monthTitleFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy年M月账单"
-        return f
-    }()
+    }
 
     nonisolated static var todayKey: String {
         key(for: Date())
     }
 
     nonisolated static func key(for date: Date) -> String {
-        return keyFormatter.string(from: date)
+        formatter(for: "yyyy-MM-dd").string(from: date)
     }
 
     nonisolated static func date(from key: String) -> Date? {
-        return keyFormatter.date(from: key)
+        formatter(for: "yyyy-MM-dd").date(from: key)
     }
 
-    static func weekStart(for date: Date) -> Date {
+    nonisolated static func weekStart(for date: Date) -> Date {
         let calendar = Calendar.current
         let weekday = calendar.component(.weekday, from: date)
         let normalized = weekday == 1 ? 7 : weekday - 1
         return calendar.date(byAdding: .day, value: -(normalized - 1), to: calendar.startOfDay(for: date)) ?? date
     }
 
-    static func weekDates(from weekStart: Date) -> [Date] {
+    nonisolated static func weekDates(from weekStart: Date) -> [Date] {
         (0..<7).compactMap { Calendar.current.date(byAdding: .day, value: $0, to: weekStart) }
     }
 
-    static func monthDayString(_ date: Date) -> String {
-        return mdFormatter.string(from: date)
+    nonisolated static func monthDayString(_ date: Date) -> String {
+        formatter(for: "M/d").string(from: date)
     }
 
-    static func weekdayName(for date: Date) -> String {
-        let index = max(0, min(6, Calendar.current.component(.weekday, from: date) - 2))
-        return weekdayNames[index < 0 ? 6 : index]
+    nonisolated static func weekdayName(for date: Date) -> String {
+        let weekday = Calendar.current.component(.weekday, from: date)
+        let index = weekday == 1 ? 6 : weekday - 2
+        return weekdayNames[index]
     }
 
-    static func monthKey(for date: Date) -> String {
-        return ymFormatter.string(from: date)
+    nonisolated static func monthKey(for date: Date) -> String {
+        formatter(for: "yyyy-MM").string(from: date)
     }
 
-    static func monthTitle(for date: Date) -> String {
-        return monthTitleFormatter.string(from: date)
+    nonisolated static func monthTitle(for date: Date) -> String {
+        formatter(for: "yyyy年M月账单").string(from: date)
     }
 }
 
@@ -230,7 +215,15 @@ enum InventoryRecommendation {
 
 extension Double {
     var cleanString: String {
-        truncatingRemainder(dividingBy: 1) == 0 ? String(Int(self)) : String(format: "%.1f", self)
+        guard isFinite else { return "0" }
+        var formatted = String(format: "%.8f", locale: Locale(identifier: "en_US_POSIX"), self)
+        while formatted.last == "0" {
+            formatted.removeLast()
+        }
+        if formatted.last == "." {
+            formatted.removeLast()
+        }
+        return formatted == "-0" || formatted.isEmpty ? "0" : formatted
     }
 
     var currencyText: String {

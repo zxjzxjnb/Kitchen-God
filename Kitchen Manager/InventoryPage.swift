@@ -7,169 +7,57 @@ struct InventoryPage: View {
     @State private var showingAddForm = false
     @State private var editingItem: InventoryItem?
     @State private var removalCandidate: InventoryItem?
-    @State private var expandedCategory: String?
-    @State private var isPriorityExpanded = false
-
     private var filteredItems: [InventoryItem] {
-        selectedCategory == "全部"
-            ? store.inventoryItems
-            : store.inventoryItems.filter { $0.category == selectedCategory }
+        store.inventoryItems.filter { selectedCategory == "全部" || $0.category == selectedCategory }
     }
 
     private var categoryCounts: [String: Int] {
         Dictionary(grouping: store.inventoryItems, by: \.category).mapValues { $0.count }
     }
 
-    private var criticalItems: [InventoryItem] {
-        filteredItems
-            .filter { insight(for: $0).focus == .critical }
-            .sorted(by: sortItems)
-    }
-
-    private var upcomingItems: [InventoryItem] {
-        filteredItems
-            .filter { insight(for: $0).focus == .upcoming }
-            .sorted(by: sortItems)
-    }
-
     private var priorityItems: [InventoryItem] {
-        filteredItems
-            .filter { insight(for: $0).focus != nil }
-            .sorted(by: sortItems)
+        filteredItems.filter { insight(for: $0).focus != nil }.sorted(by: sortItems)
     }
 
     private var categorySections: [InventoryCategoryGroup] {
-        let grouped = Dictionary(grouping: filteredItems, by: \.category)
-        let categories = selectedCategory == "全部" ? KitchenData.categories : [selectedCategory]
-
+        let grouped = Dictionary(grouping: filteredItems.filter { insight(for: $0).focus == nil }, by: \.category)
+        let categories = KitchenData.categories + grouped.keys.filter { !KitchenData.categories.contains($0) }.sorted()
         return categories.compactMap { category in
             guard let items = grouped[category], !items.isEmpty else { return nil }
-
-            let sortedItems = items.sorted(by: sortItems)
-            return InventoryCategoryGroup(
-                category: category,
-                items: sortedItems,
-                criticalCount: sortedItems.filter { insight(for: $0).focus == .critical }.count,
-                upcomingCount: sortedItems.filter { insight(for: $0).focus == .upcoming }.count
-            )
+            return InventoryCategoryGroup(category: category, items: items.sorted(by: sortItems),
+                                          criticalCount: 0, upcomingCount: 0)
         }
-    }
-
-    private var totalEstimatedValue: Double {
-        filteredItems.reduce(0) { $0 + $1.estimatedRemainingValue }
-    }
-
-    private var priorityIssueSummaries: [String] {
-        priorityItems.map(issueSummary(for:))
-    }
-
-    private var overviewMessage: String {
-        if filteredItems.isEmpty {
-            return selectedCategory == "全部" ? "先添加食材。" : "换个分类看看。"
-        }
-        if !priorityItems.isEmpty {
-            return issueSummaryText(for: priorityItems, limit: 3)
-        }
-        return "库存状态平稳"
-    }
-
-    private var prioritySummaryTags: [String] {
-        var tags = Array(priorityIssueSummaries.prefix(3))
-        let extraCount = max(priorityIssueSummaries.count - tags.count, 0)
-        if extraCount > 0 {
-            tags.append("还有 \(extraCount) 项")
-        }
-        return tags
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    InventoryOverviewCard(
-                        message: overviewMessage,
-                        itemCount: filteredItems.count,
-                        totalValue: totalEstimatedValue,
-                        criticalCount: criticalItems.count,
-                        upcomingCount: upcomingItems.count,
-                        onAdd: { showingAddForm = true }
-                    )
-                    .padding(.horizontal)
-
-                    InventoryCategoryFilter(
-                        selectedCategory: $selectedCategory,
-                        counts: categoryCounts
-                    )
-                    .padding(.horizontal)
+                    InventoryCategoryFilter(selectedCategory: $selectedCategory, counts: categoryCounts)
 
                     if filteredItems.isEmpty {
-                        EmptyStateCard(
-                            symbol: "archivebox.fill",
-                            title: "库存为空",
-                            subtitle: "先添加食材。"
-                        )
-                        .padding(.horizontal)
+                        EmptyStateCard(symbol: "archivebox", title: "暂无食材", subtitle: "")
                     } else {
-                        if priorityItems.isEmpty {
-                            NoAlertCard()
-                                .padding(.horizontal)
-                        } else {
-                            InventoryFocusCard(
-                                title: "需要处理",
-                                symbol: "clock.badge.exclamationmark.fill",
-                                accent: criticalItems.isEmpty ? KitchenTheme.warning : KitchenTheme.danger,
-                                tint: criticalItems.isEmpty ? KitchenTheme.warning.opacity(0.12) : KitchenTheme.danger.opacity(0.12),
-                                items: priorityItems,
-                                summaryTags: prioritySummaryTags,
-                                isExpanded: isPriorityExpanded,
-                                showCategory: false,
-                                insight: insight(for:),
-                                onToggle: { isPriorityExpanded.toggle() },
-                                onAdjust: { item, delta in adjustQuantity(for: item, delta: delta) },
-                                onDelete: prepareRemoval,
-                                onEdit: { editingItem = $0 }
-                            )
-                            .padding(.horizontal)
+                        if !priorityItems.isEmpty {
+                            inventorySection(title: "需要处理", items: priorityItems)
                         }
-
-                        VStack(alignment: .leading, spacing: 12) {
-                            ForEach(categorySections) { section in
-                                InventoryCategorySectionCard(
-                                    section: section,
-                                    accent: InventoryPalette.color(for: section.category),
-                                    isExpanded: expandedCategory == section.category,
-                                    showCategory: false,
-                                    insight: insight(for:),
-                                    issueSummary: issueSummary(for:),
-                                    onToggle: { toggleCategorySection(section.category) },
-                                    onAdjust: { item, delta in adjustQuantity(for: item, delta: delta) },
-                                    onDelete: prepareRemoval,
-                                    onEdit: { editingItem = $0 }
-                                )
-                            }
+                        ForEach(categorySections) { section in
+                            inventorySection(title: section.category, items: section.items)
                         }
-                        .padding(.horizontal)
                     }
                 }
+                .padding(.horizontal)
                 .padding(.vertical, 12)
             }
             .background(KitchenTheme.background)
             .navigationTitle("库存管理")
             .animation(.snappy(duration: 0.28), value: selectedCategory)
-            .animation(.snappy(duration: 0.28), value: expandedCategory)
-            .animation(.snappy(duration: 0.28), value: isPriorityExpanded)
-            .onChange(of: selectedCategory) { _, newValue in
-                expandedCategory = newValue == "全部" ? nil : newValue
-                isPriorityExpanded = false
-            }
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    KitchenBrandMark()
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showingAddForm = true } label: {
                         Image(systemName: "plus")
                     }
+                    .accessibilityLabel("添加食材")
                 }
             }
             .sheet(isPresented: $showingAddForm) {
@@ -242,10 +130,6 @@ struct InventoryPage: View {
         removalCandidate = item
     }
 
-    private func toggleCategorySection(_ category: String) {
-        expandedCategory = expandedCategory == category ? nil : category
-    }
-
     private func consumeInventoryItem(_ item: InventoryItem) {
         store.inventoryItems.removeAll { $0.id == item.id }
         removalCandidate = nil
@@ -277,142 +161,13 @@ struct InventoryPage: View {
         return lhs.name.localizedCompare(rhs.name) == .orderedAscending
     }
 
-    private func issueSummaryText(for items: [InventoryItem], limit: Int) -> String {
-        let summaries = items.prefix(limit).map(issueSummary(for:))
-        let extraCount = max(items.count - summaries.count, 0)
-        let text = summaries.joined(separator: "、")
-        return extraCount > 0 ? "\(text)，还有 \(extraCount) 项" : text
-    }
-
-    private func issueSummary(for item: InventoryItem) -> String {
-        if let expiryKey = item.expiryDate, let days = daysUntil(dateKey: expiryKey) {
-            if days < 0 {
-                return "\(item.name)已过期"
-            }
-            if days == 0 {
-                return "\(item.name)今天到期"
-            }
-            if days <= 3 {
-                return "\(item.name)临期"
-            }
-        }
-
-        if item.freshnessDays > 0, let addedDate = DateHelper.date(from: item.addedDate) {
-            let usedDays = Calendar.current.dateComponents([.day], from: addedDate, to: Date()).day ?? 0
-            let leftDays = item.freshnessDays - usedDays
-            if leftDays <= 0 {
-                return "\(item.name)不新鲜"
-            }
-            if leftDays <= 2 {
-                return "\(item.name)新鲜期临期"
-            }
-        }
-
-        if let threshold = item.threshold, item.quantityValue <= threshold {
-            return "\(item.name)库存不足"
-        }
-
-        return "\(item.name)需要处理"
-    }
-
     private func insight(for item: InventoryItem) -> InventoryItemInsight {
-        let status = AlertEngine.status(for: item)
-
-        if let expiryKey = item.expiryDate, let days = daysUntil(dateKey: expiryKey) {
-            let dateText = shortDateText(from: expiryKey)
-
-            if days < 0 {
-                return InventoryItemInsight(
-                    status: status,
-                    focus: .critical,
-                    detail: "",
-                    sortRank: 0
-                )
-            }
-
-            if days == 0 {
-                return InventoryItemInsight(
-                    status: status,
-                    focus: .critical,
-                    detail: "",
-                    sortRank: 1
-                )
-            }
-
-            if days <= 3 {
-                return InventoryItemInsight(
-                    status: status,
-                    focus: .upcoming,
-                    detail: "",
-                    sortRank: 10 + days
-                )
-            }
-
-            return InventoryItemInsight(
-                status: status,
-                focus: nil,
-                detail: "到期日 \(dateText)",
-                sortRank: 120 + days
-            )
-        }
-
-        if item.freshnessDays > 0, let addedDate = DateHelper.date(from: item.addedDate) {
-            let usedDays = Calendar.current.dateComponents([.day], from: addedDate, to: Date()).day ?? 0
-            let leftDays = item.freshnessDays - usedDays
-            let addedText = DateHelper.monthDayString(addedDate)
-
-            if leftDays <= 0 {
-                return InventoryItemInsight(
-                    status: status,
-                    focus: .critical,
-                    detail: "\(addedText) 入库，已存放 \(usedDays) 天",
-                    sortRank: 5
-                )
-            }
-
-            if leftDays <= 2 {
-                return InventoryItemInsight(
-                    status: status,
-                    focus: .upcoming,
-                    detail: "新鲜期还剩 \(leftDays) 天",
-                    sortRank: 20 + leftDays
-                )
-            }
-
-            return InventoryItemInsight(
-                status: status,
-                focus: nil,
-                detail: "\(addedText) 入库，建议 \(item.freshnessDays) 天内用完",
-                sortRank: 150 + usedDays
-            )
-        }
-
-        if let threshold = item.threshold, item.quantityValue <= threshold {
-            return InventoryItemInsight(
-                status: status,
-                focus: nil,
-                detail: "库存偏低，记得补货",
-                sortRank: 80
-            )
-        }
-
-        return InventoryItemInsight(
-            status: status,
-            focus: nil,
-            detail: item.usageSuggestion,
-            sortRank: 220
-        )
+        AlertEngine.insight(for: item)
     }
 
-    private func shortDateText(from key: String) -> String {
-        guard let date = DateHelper.date(from: key) else { return key }
-        return DateHelper.monthDayString(date)
-    }
-
-    private func daysUntil(dateKey: String) -> Int? {
-        guard let date = DateHelper.date(from: dateKey) else { return nil }
-        let start = Calendar.current.startOfDay(for: Date())
-        let end = Calendar.current.startOfDay(for: date)
-        return Calendar.current.dateComponents([.day], from: start, to: end).day
+    private func inventorySection(title: String, items: [InventoryItem]) -> some View {
+        InventorySection(title: title, items: items, insight: insight(for:),
+                         onAdjust: { item, delta in adjustQuantity(for: item, delta: delta) },
+                         onDelete: prepareRemoval, onEdit: { editingItem = $0 })
     }
 }
